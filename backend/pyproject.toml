@@ -1,0 +1,36 @@
+[project]
+name = "dap-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+# 망분리(air-gap) 재현성: 모든 런타임 의존성에 상·하한 핀. 락은 requirements.lock(해시) 사용.
+# 빌드: `pip-compile pyproject.toml -o requirements.lock --generate-hashes`
+#      `pip download -r requirements.lock -d wheels/` → 사내 미러/오프라인 번들로 결정론적 설치.
+dependencies = [
+  "fastapi>=0.115,<0.116",
+  "uvicorn[standard]>=0.30,<0.35",
+  "langchain>=0.3,<0.4",          # 전처리 체인 접착제 (핵심 파싱은 직접 제어)
+  "langgraph>=0.2,<0.3",          # 멀티에이전트 오케스트레이션 (마이너마다 API 변동 — 핀 필수)
+  "opensearch-py>=2.6,<3",        # 단일 검색엔진 (BM25 + k-NN). 별도 벡터DB 없음
+  "sqlalchemy>=2.0,<2.1",
+  "psycopg[binary]>=3.2,<4",      # PostgreSQL (psycopg3; 운영은 binary 대신 소스 빌드 권장)
+  "python-ldap>=3.4,<4",          # SSO/LDAP 연동
+  "openai>=1.40,<2",              # vLLM OpenAI 호환 엔드포인트 호출 (외부 클라우드 호출 아님)
+  "python-docx>=1.1,<2",          # 문서 생성: docx
+  "python-pptx>=0.6,<1",          # 문서 생성: pptx
+  "openpyxl>=3.1,<4",             # 문서 생성: xlsx / [P1] Excel 파싱(직접 제어)
+  "weasyprint>=62,<64",           # 문서 생성: pdf (네이티브 의존 — 휠 번들 시 cairo/pango 동봉)
+  "pdfplumber>=0.11,<0.12",       # [P1] PDF 파싱 - 텍스트/표 직접 추출(직접 제어)
+  "minio>=7.2,<8",                # 산출물 오브젝트 스토리지(S3 호환)
+  "pydantic>=2.7,<3",             # v2 고정 (FastAPI 0.115와 호환)
+  "python-multipart>=0.0.9,<0.1", # POST /data 업로드(FastAPI File/Form 파싱)
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<9", "ruff>=0.5,<1", "reportlab>=4,<5"]  # reportlab: PDF 파서 테스트용 fixture
+
+[tool.ruff]
+line-length = 100
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* D.A.P "Mission Console / Daylight" — docs/design-system.md (LOCKED)
+   5색 팔레트: ink #1c1c1c / sage #daddd8 / cream #ecebe4 / mist #eef0f2 / ghost #fafaff
+   다크 모드는 동일 5색 반전. 보안등급(L1~L5)은 기능색 최소도입(A안). */
+@layer base {
+  :root {
+    --background: 240 100% 99%; /* ghost */
+    --foreground: 0 0% 11%; /* ink */
+    --card: 210 13% 94%; /* mist */
+    --card-foreground: 0 0% 11%;
+    --popover: 240 100% 99%;
+    --popover-foreground: 0 0% 11%;
+    --muted: 52 17% 91%; /* cream */
+    --muted-foreground: 0 0% 38%;
+    --border: 96 7% 86%; /* sage */
+    --input: 96 7% 86%;
+    --ring: 0 0% 11%;
+
+    --primary: 0 0% 11%; /* ink */
+    --primary-foreground: 240 100% 99%;
+    --secondary: 52 17% 91%; /* cream */
+    --secondary-foreground: 0 0% 11%;
+    --accent: 96 7% 86%; /* sage */
+    --accent-foreground: 0 0% 11%;
+
+    --destructive: 0 52% 48%;
+    --destructive-foreground: 240 100% 99%;
+
+    --chart-1: 0 0% 11%;
+    --chart-2: 0 0% 38%;
+    --chart-3: 96 7% 60%;
+    --chart-4: 52 17% 70%;
+    --chart-5: 210 13% 80%;
+
+    --sidebar: 52 17% 91%; /* cream */
+    --sidebar-foreground: 0 0% 11%;
+    --sidebar-primary: 0 0% 11%;
+    --sidebar-primary-foreground: 240 100% 99%;
+    --sidebar-accent: 96 7% 86%; /* sage */
+    --sidebar-accent-foreground: 0 0% 11%;
+    --sidebar-border: 96 7% 86%;
+    --sidebar-ring: 0 0% 11%;
+
+    /* 보안등급 기능색 (A안) — 배지/필터/출처 전용, 브랜드 색 아님 */
+    --security-1: 150 28% 42%; /* L1 공개  muted green  */
+    --security-2: 200 32% 45%; /* L2 대내  muted teal   */
+    --security-3: 40 58% 46%; /* L3 민감  muted amber  */
+    --security-4: 25 62% 48%; /* L4 비밀  muted orange */
+    --security-5: 0 52% 48%; /* L5 기밀  muted red    */
+
+    --radius: 0.5rem;
+  }
+
+  /* 다크 모드 = 동일 5색 반전 */
+  .dark {
+    --background: 0 0% 11%; /* ink */
+    --foreground: 240 100% 99%; /* ghost */
+    --card: 0 0% 14%;
+    --card-foreground: 240 100% 99%;
+    --popover: 0 0% 11%;
+    --popover-foreground: 240 100% 99%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 96 7% 72%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 240 100% 99%;
+
+    --primary: 240 100% 99%; /* ghost */
+    --primary-foreground: 0 0% 11%;
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 240 100% 99%;
+    --accent: 96 7% 30%;
+    --accent-foreground: 240 100% 99%;
+
+    --destructive: 0 52% 48%;
+    --destructive-foreground: 240 100% 99%;
+
+    --chart-1: 240 100% 99%;
+    --chart-2: 96 7% 72%;
+    --chart-3: 0 0% 50%;
+    --chart-4: 0 0% 35%;
+    --chart-5: 0 0% 22%;
+
+    --sidebar: 0 0% 14%;
+    --sidebar-foreground: 240 100% 99%;
+    --sidebar-primary: 240 100% 99%;
+    --sidebar-primary-foreground: 0 0% 11%;
+    --sidebar-accent: 0 0% 22%;
+    --sidebar-accent-foreground: 240 100% 99%;
+    --sidebar-border: 0 0% 22%;
+    --sidebar-ring: 240 100% 99%;
+
+    --security-1: 150 28% 52%;
+    --security-2: 200 32% 55%;
+    --security-3: 40 58% 56%;
+    --security-4: 25 62% 58%;
+    --security-5: 0 52% 58%;
+  }
+
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-heading;
+  }
+}
