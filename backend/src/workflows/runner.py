@@ -20,6 +20,7 @@ def run_workflow(task: str, *, ctx: SessionContext, max_steps: int = 8) -> Artif
         "running_level": initial_level,
         "source_ids": [],
         "observations": [],
+        "chunks_used": [],
         "done": False,
         "answer": "",
         "next_tool": None,
@@ -32,10 +33,12 @@ def run_workflow(task: str, *, ctx: SessionContext, max_steps: int = 8) -> Artif
 
     security_level = classify_artifact(ctx, final_state["running_level"])
     source_ids = tuple(dict.fromkeys(final_state["source_ids"]))
+    chunks_used = tuple(final_state["chunks_used"])
 
     return Artifact(
         kind="answer",
         security_level=security_level,
         source_ids=source_ids,
         content=final_state["answer"],
+        chunks_used=chunks_used,
     )

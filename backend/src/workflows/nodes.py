@@ -61,6 +61,7 @@ def _observe_node(state: WorkflowState) -> dict:
         "steps": steps,
         "observations": state["observations"] + [result.output],
         "source_ids": state["source_ids"] + list(result.source_ids),
+        "chunks_used": state["chunks_used"] + list(result.chunks),
         "running_level": max(state["running_level"], result.security_level),
     }
 

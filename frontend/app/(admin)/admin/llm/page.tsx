@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import { MOCK_LLM_ENDPOINTS, MOCK_LLM_SOURCE } from "@/lib/api/mock";
+import { getLlmSource } from "@/lib/api/client";
 import type { AuditEntry, LlmSourceStatus } from "@/lib/api/types";
 import { useSession } from "@/lib/session-context";
 import { cn } from "@/lib/utils";
@@ -29,18 +29,21 @@ const CLOUD_WARNING =
  */
 export default function AdminLlmPage() {
   const { ctx } = useSession();
-  const [source, setSource] = useState<LlmSourceStatus>(MOCK_LLM_SOURCE);
+  const [source, setSource] = useState<LlmSourceStatus | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [recentChanges, setRecentChanges] = useState<AuditEntry[]>([]);
 
-  const isCloud = source.mode === "cloud";
+  useEffect(() => {
+    getLlmSource(ctx).then(setSource).catch(console.error);
+  }, [ctx.principal.user_id]);
+
+  const isCloud = source?.mode === "cloud";
 
   function applyChange(nextMode: "on-prem" | "cloud") {
     const now = new Date().toISOString();
-    const onPremEndpoint = MOCK_LLM_ENDPOINTS[0];
     const provider =
       nextMode === "on-prem"
-        ? `vLLM (${onPremEndpoint.model}, on-prem)`
+        ? (source?.mode === "on-prem" ? source.provider : "vLLM (on-prem)")
         : "CLOUD API (외부 제공자)";
 
     setSource({
@@ -55,7 +58,7 @@ export default function AdminLlmPage() {
       at: now,
       user_id: ctx.principal.user_id,
       action: "llm_source_change",
-      detail: `LLM 소스 ${source.mode} → ${nextMode} 전환`,
+      detail: `LLM 소스 ${source?.mode ?? "?"} → ${nextMode} 전환`,
       severity: "warn",
     };
     setRecentChanges((prev) => [entry, ...prev]);
@@ -86,6 +89,9 @@ export default function AdminLlmPage() {
         </p>
       </div>
 
+      {source === null ? (
+        <p className="text-sm text-muted-foreground">불러오는 중…</p>
+      ) : null}
       <Card
         className={cn(
           "gap-4 border-0 ring-1",
@@ -139,21 +145,21 @@ export default function AdminLlmPage() {
               <dt className={cn("uppercase tracking-widest", isCloud ? "text-security-5/80" : "opacity-60")}>
                 Provider
               </dt>
-              <dd className={cn(isCloud ? "" : "opacity-90")}>{source.provider}</dd>
+              <dd className={cn(isCloud ? "" : "opacity-90")}>{source?.provider ?? "-"}</dd>
             </div>
             <div className="space-y-1">
               <dt className={cn("uppercase tracking-widest", isCloud ? "text-security-5/80" : "opacity-60")}>
                 마지막 전환 시각
               </dt>
               <dd className={cn(isCloud ? "" : "opacity-90")}>
-                {source.changed_at ? new Date(source.changed_at).toLocaleString("ko-KR") : "-"}
+                {source?.changed_at ? new Date(source.changed_at).toLocaleString("ko-KR") : "-"}
               </dd>
             </div>
             <div className="space-y-1">
               <dt className={cn("uppercase tracking-widest", isCloud ? "text-security-5/80" : "opacity-60")}>
                 전환한 admin
               </dt>
-              <dd className={cn(isCloud ? "" : "opacity-90")}>{source.changed_by ?? "-"}</dd>
+              <dd className={cn(isCloud ? "" : "opacity-90")}>{source?.changed_by ?? "-"}</dd>
             </div>
           </dl>
         </CardContent>

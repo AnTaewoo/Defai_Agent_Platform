@@ -1,10 +1,15 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SecurityBadge } from "@/components/security/security-badge";
 import { GlobalKpi } from "@/components/admin/global-kpi";
 import { LlmSourcePanel } from "@/components/admin/llm-source-panel";
 import { ServiceTiles } from "@/components/admin/service-tiles";
-import { adminAgentRows, adminDataRows, fullAuditLog } from "@/lib/api/admin-mock";
-import { MOCK_LLM_SOURCE, MOCK_MEMBERSHIPS, MOCK_USERS } from "@/lib/api/mock";
+import { getAdminAgents, getAdminAuditLog, getLlmSource, listUsers } from "@/lib/api/client";
+import type { AdminAgentOut, AuditEntry, LlmSourceStatus, UserPublicOut } from "@/lib/api/types";
+import { useSession } from "@/lib/session-context";
 import { cn } from "@/lib/utils";
 
 const ACTION_LABEL: Record<string, string> = {
@@ -18,6 +23,7 @@ const ACTION_LABEL: Record<string, string> = {
   agent_level_change: "에이전트 등급 변경",
   access_denied: "권한 거부",
   llm_source_change: "LLM 소스 전환",
+  chat: "채팅",
 };
 
 const SEVERITY_DOT: Record<"info" | "warn" | "crit", string> = {
@@ -31,11 +37,20 @@ const SEVERITY_DOT: Record<"info" | "warn" | "crit", string> = {
  * 전역 KPI + LLM 소스 상태 히어로(시그니처) + 최근 alert 패널 + 서비스 상태 스트립.
  */
 export default function AdminOverviewPage() {
-  const projectIds = new Set(MOCK_MEMBERSHIPS.map((m) => m.project_id));
-  const dataRows = adminDataRows();
-  const agentRows = adminAgentRows();
-  const activeAgents = agentRows.filter((a) => a.status !== "idle").length;
-  const recentAlerts = fullAuditLog().slice(0, 6);
+  const { ctx } = useSession();
+  const [users, setUsers] = useState<UserPublicOut[]>([]);
+  const [llmSource, setLlmSource] = useState<LlmSourceStatus | null>(null);
+  const [auditLog, setAuditLog] = useState<AuditEntry[]>([]);
+  const [agents, setAgents] = useState<AdminAgentOut[]>([]);
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(console.error);
+    getLlmSource(ctx).then(setLlmSource).catch(console.error);
+    getAdminAuditLog(ctx).then(setAuditLog).catch(console.error);
+    getAdminAgents(ctx).then(setAgents).catch(console.error);
+  }, [ctx.principal.user_id]);
+
+  const recentAlerts = auditLog.slice(0, 6);
 
   return (
     <div className="space-y-6">
@@ -50,24 +65,14 @@ export default function AdminOverviewPage() {
 
       <GlobalKpi
         items={[
-          { label: "전체 user", value: MOCK_USERS.length },
-          { label: "전체 프로젝트", value: projectIds.size },
-          {
-            label: "색인 데이터",
-            value: dataRows.length,
-            hint: `공용 ${dataRows.filter((d) => d.visibility === "shared").length} · 개인 ${
-              dataRows.filter((d) => d.visibility === "private").length
-            }`,
-          },
-          {
-            label: "활성 에이전트",
-            value: activeAgents,
-            hint: `전체 ${agentRows.length}개 중`,
-          },
+          { label: "전체 user", value: users.length },
+          { label: "전체 프로젝트", value: "-" },
+          { label: "전체 에이전트", value: agents.length },
+          { label: "감사 로그", value: auditLog.length, hint: "최근 200건" },
         ]}
       />
 
-      <LlmSourcePanel source={MOCK_LLM_SOURCE} />
+      {llmSource && <LlmSourcePanel source={llmSource} />}
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <Card className="p-0">
@@ -78,33 +83,40 @@ export default function AdminOverviewPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-0 p-0">
-            <ul className="divide-y divide-border">
-              {recentAlerts.map((a) => {
-                const user = MOCK_USERS.find((u) => u.id === a.user_id);
-                return (
-                  <li key={a.id} className="flex items-start gap-3 px-4 py-2.5 text-sm">
-                    <span
-                      className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", SEVERITY_DOT[a.severity])}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1 space-y-0.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-medium text-foreground">
-                          {user?.name ?? a.user_id} · {ACTION_LABEL[a.action] ?? a.action}
-                        </span>
-                        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
-                          {new Date(a.at).toLocaleString("ko-KR")}
-                        </span>
+            {recentAlerts.length === 0 ? (
+              <p className="px-4 py-6 text-sm text-muted-foreground">감사 로그가 없습니다.</p>
+            ) : (
+              <ul className="divide-y divide-border">
+                {recentAlerts.map((a) => {
+                  const user = users.find((u) => u.id === a.user_id);
+                  const sev = (a.severity as "info" | "warn" | "crit") in SEVERITY_DOT
+                    ? (a.severity as "info" | "warn" | "crit")
+                    : "info";
+                  return (
+                    <li key={a.id} className="flex items-start gap-3 px-4 py-2.5 text-sm">
+                      <span
+                        className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", SEVERITY_DOT[sev])}
+                        aria-hidden
+                      />
+                      <div className="min-w-0 flex-1 space-y-0.5">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-medium text-foreground">
+                            {user?.name ?? a.user_id} · {ACTION_LABEL[a.action] ?? a.action}
+                          </span>
+                          <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+                            {new Date(a.at).toLocaleString("ko-KR")}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">{a.detail}</p>
                       </div>
-                      <p className="truncate text-xs text-muted-foreground">{a.detail}</p>
-                    </div>
-                    {user && (
-                      <SecurityBadge level={user.level} visibility="shared" className="shrink-0" />
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+                      {user && (
+                        <SecurityBadge level={user.level} visibility="shared" className="shrink-0" />
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </CardContent>
         </Card>
 

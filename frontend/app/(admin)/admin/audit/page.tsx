@@ -1,11 +1,24 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
 import { AuditStream } from "@/components/admin/audit-stream";
-import { fullAuditLog } from "@/lib/api/admin-mock";
+import { getAdminAuditLog, listUsers } from "@/lib/api/client";
+import type { AuditEntry, UserPublicOut } from "@/lib/api/types";
+import { useSession } from "@/lib/session-context";
 
 /**
  * OPS_CONSOLE.md §3.6 — 감사 · alert. 실시간 스트림 + 일시정지 + 강조 규칙.
  */
 export default function AdminAuditPage() {
-  const entries = fullAuditLog();
+  const { ctx } = useSession();
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [users, setUsers] = useState<UserPublicOut[]>([]);
+
+  useEffect(() => {
+    listUsers().then(setUsers).catch(console.error);
+    getAdminAuditLog(ctx).then(setEntries).catch(console.error);
+  }, [ctx.principal.user_id]);
 
   return (
     <div className="space-y-6">
@@ -21,7 +34,7 @@ export default function AdminAuditPage() {
         </p>
       </div>
 
-      <AuditStream initialEntries={entries} />
+      <AuditStream initialEntries={entries} users={users} />
     </div>
   );
 }

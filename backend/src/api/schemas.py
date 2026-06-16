@@ -12,6 +12,7 @@ from ..types import Artifact, Chunk, DataItem
 
 class ChunkOut(BaseModel):
     text: str
+    summary: str = ""
     security_level: int
     source: str
     doc_type: str
@@ -20,6 +21,7 @@ class ChunkOut(BaseModel):
     def of(cls, c: Chunk) -> "ChunkOut":
         return cls(
             text=c.text,
+            summary=c.summary,
             security_level=c.meta.security_level,
             source=c.meta.source,
             doc_type=c.meta.doc_type,
@@ -64,6 +66,7 @@ class ArtifactOut(BaseModel):
     source_ids: list[str]
     path: str | None = None
     content: str | None = None
+    chunks_used: list[ChunkOut] = []
 
     @classmethod
     def of(cls, a: Artifact) -> "ArtifactOut":
@@ -73,6 +76,7 @@ class ArtifactOut(BaseModel):
             source_ids=list(a.source_ids),
             path=a.path,
             content=a.content,
+            chunks_used=[ChunkOut.of(c) for c in a.chunks_used],
         )
 
 
@@ -162,3 +166,54 @@ class MemberAddIn(BaseModel):
     """POST /projects/{id}/members — 멤버 직접 추가."""
     user_id: str
     role: str
+
+
+class AgentCreateIn(BaseModel):
+    """POST /projects/{id}/agents — 에이전트 생성."""
+    name: str
+    description: str = ""
+    endpoint_id: str
+    visibility: str = "shared"
+
+
+class LevelPatchIn(BaseModel):
+    """PATCH /admin/*/level — 등급·클리어런스 변경 요청."""
+    level: int
+
+
+class AuditEntryOut(BaseModel):
+    """GET /admin/audit — audit_log 행(severity는 action에서 파생)."""
+    id: str
+    at: str
+    user_id: str | None = None
+    action: str
+    detail: str
+    severity: str
+
+
+class AdminUserOut(BaseModel):
+    """GET /admin/users — 유저 + 프로젝트 참여 수."""
+    id: str
+    name: str
+    level: int
+    dept: str = ""
+    project_count: int = 0
+    is_initial_admin: bool = False
+
+
+class AdminAgentOut(BaseModel):
+    """GET /admin/agents — 전체 에이전트(admin 전용)."""
+    id: str
+    name: str
+    security_level: int
+    project_id: str | None = None
+    project_name: str = ""
+
+
+class LlmEndpointOut(BaseModel):
+    """GET /admin/llm-endpoints — llm_endpoints 행(admin 전용)."""
+    id: str
+    base_url: str
+    model: str
+    max_security_level: int
+    source: str

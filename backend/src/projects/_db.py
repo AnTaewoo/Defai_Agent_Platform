@@ -218,62 +218,14 @@ def seed_dummy_project(engine: Engine | None = None) -> None:
             (
                 users,
                 [
-                    {"id": "u-l1", "sso_subject": "sso-u-l1", "level": 1, "dept": "기획"},
-                    {"id": "u-l2", "sso_subject": "sso-u-l2", "level": 2, "dept": "기획"},
-                    {"id": "u-l3", "sso_subject": "sso-u-l3", "level": 3, "dept": "연구"},
-                    {"id": "u-l4", "sso_subject": "sso-u-l4", "level": 4, "dept": "연구"},
-                    {"id": "u-l5", "sso_subject": "sso-u-l5", "level": 5, "dept": "운영"},
+                    {"id": "u-l5", "sso_subject": "sso-u-l5", "level": 5, "dept": "", "name": "관리자"},
                 ],
             ),
             (projects, [{"id": DUMMY_PROJECT_ID, "name": "Default Project"}]),
             (
                 project_members,
                 [
-                    {"project_id": DUMMY_PROJECT_ID, "user_id": "u-l1", "role": "viewer"},
-                    {"project_id": DUMMY_PROJECT_ID, "user_id": "u-l2", "role": "member"},
-                    {"project_id": DUMMY_PROJECT_ID, "user_id": "u-l3", "role": "editor"},
-                    {"project_id": DUMMY_PROJECT_ID, "user_id": "u-l4", "role": "manager"},
                     {"project_id": DUMMY_PROJECT_ID, "user_id": "u-l5", "role": "project_admin"},
-                ],
-            ),
-            (
-                data,
-                [
-                    {
-                        "id": "data-1",
-                        "owner_id": "u-l1",
-                        "source": "docs/sample/public.pdf",
-                        "doc_type": "pdf",
-                        "security_level": 1,
-                        "visibility": "shared",
-                        "dept": "기획",
-                    },
-                    {
-                        "id": "data-2",
-                        "owner_id": "u-l3",
-                        "source": "docs/sample/internal.xlsx",
-                        "doc_type": "xlsx",
-                        "security_level": 3,
-                        "visibility": "shared",
-                        "dept": "연구",
-                    },
-                    {
-                        "id": "data-3",
-                        "owner_id": "u-l5",
-                        "source": "docs/sample/confidential.pdf",
-                        "doc_type": "pdf",
-                        "security_level": 5,
-                        "visibility": "private",
-                        "dept": "운영",
-                    },
-                ],
-            ),
-            (
-                project_data,
-                [
-                    {"project_id": DUMMY_PROJECT_ID, "data_id": "data-1"},
-                    {"project_id": DUMMY_PROJECT_ID, "data_id": "data-2"},
-                    {"project_id": DUMMY_PROJECT_ID, "data_id": "data-3"},
                 ],
             ),
             (

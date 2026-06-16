@@ -51,6 +51,7 @@ export interface DataItemOut {
 /** 검색 결과 1청크 → ChunkOut */
 export interface ChunkOut {
   text: string;
+  summary: string;
   security_level: SecurityLevel;
   source: string;
   doc_type: string;
@@ -63,6 +64,7 @@ export interface ArtifactOut {
   source_ids: string[];
   path: string | null;
   content: string | null;
+  chunks_used: ChunkOut[];
 }
 
 export interface ChatRequest {
@@ -122,6 +124,31 @@ export interface AuditEntry {
   action: string;
   detail: string;
   severity: "info" | "warn" | "crit";
+}
+
+export interface AdminUserOut {
+  id: string;
+  name: string;
+  level: SecurityLevel;
+  dept: string;
+  project_count: number;
+  is_initial_admin: boolean;
+}
+
+export interface AdminAgentOut {
+  id: string;
+  name: string;
+  security_level: SecurityLevel;
+  project_id: string | null;
+  project_name: string;
+}
+
+export interface LlmEndpointOut {
+  id: string;
+  base_url: string;
+  model: string;
+  max_security_level: SecurityLevel;
+  source: string;
 }
 
 export interface LlmSourceStatus {

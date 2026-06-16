@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,8 +25,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { SecurityBadge } from "@/components/security/security-badge";
-import { MOCK_LLM_ENDPOINTS } from "@/lib/api/mock";
-import type { AgentOut, SecurityLevel } from "@/lib/api/types";
+import { createProjectAgent, getLlmEndpoints } from "@/lib/api/client";
+import type { AgentOut, LlmEndpointOut } from "@/lib/api/types";
 import { useSession } from "@/lib/session-context";
 import { Plus } from "lucide-react";
 
@@ -37,45 +38,68 @@ interface AgentBuilderSheetProps {
  * CONSOLE.md §5.5 — 에이전트 편입 Sheet(project_admin):
  * 이름 · 설명 · 공개(공용/PRIVATE) · 서빙 모델/엔드포인트 선택.
  * 보안등급은 선택한 서빙 모델 등급에서 자동 부여(직접 입력 없음).
- * 게이트: 에이전트(=모델) 등급 ≤ 본인 클리어런스 — 초과 모델은 셀렉터 disabled + "클리어런스 초과".
+ * 엔드포인트 목록은 실시간 DB 조회 — admin이 변경한 서빙 등급이 즉시 반영됨.
  */
 export function AgentBuilderSheet({ onCreate }: AgentBuilderSheetProps) {
   const { ctx } = useSession();
+  const { projectId } = useParams<{ projectId: string }>();
   const [open, setOpen] = useState(false);
+  const [endpoints, setEndpoints] = useState<LlmEndpointOut[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [shared, setShared] = useState(true);
-  const [endpointId, setEndpointId] = useState<string>(
-    MOCK_LLM_ENDPOINTS.find((e) => e.max_security_level <= ctx.principal.level)?.id ?? "",
-  );
+  const [endpointId, setEndpointId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const selectedEndpoint = MOCK_LLM_ENDPOINTS.find((e) => e.id === endpointId);
-  const assignedLevel: SecurityLevel | null = selectedEndpoint?.max_security_level ?? null;
+  // Fetch real endpoints when sheet opens
+  useEffect(() => {
+    if (!open) return;
+    getLlmEndpoints(ctx)
+      .then((eps) => {
+        setEndpoints(eps);
+        if (eps.length > 0 && !endpointId) {
+          setEndpointId(eps[0].id);
+        }
+      })
+      .catch(console.error);
+  }, [open, ctx.principal.user_id]);
+
+  const selectedEndpoint = endpoints.find((e) => e.id === endpointId);
 
   function reset() {
     setName("");
     setDescription("");
     setShared(true);
+    setEndpointId("");
+    setError(null);
   }
 
-  function handleCreate() {
-    if (!name.trim() || !selectedEndpoint || !assignedLevel) return;
-    const agent: AgentOut = {
-      id: `agent-${Date.now()}`,
-      name: name.trim(),
-      description: description.trim(),
-      security_level: assignedLevel,
-      visibility: shared ? "shared" : "private",
-      owner_id: ctx.principal.user_id,
-      status: "idle",
-    };
-    onCreate(agent);
-    setOpen(false);
-    reset();
+  async function handleCreate() {
+    if (!name.trim() || !selectedEndpoint || !projectId) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const agent = await createProjectAgent(
+        ctx,
+        projectId,
+        name.trim(),
+        description.trim(),
+        selectedEndpoint.id,
+        shared ? "shared" : "private",
+      );
+      onCreate(agent);
+      setOpen(false);
+      reset();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "에이전트 생성에 실패했습니다");
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <Sheet open={open} onOpenChange={setOpen}>
+    <Sheet open={open} onOpenChange={(v) => { setOpen(v); if (!v) reset(); }}>
       <SheetTrigger render={<Button size="sm" />}>
         <Plus />
         에이전트 편입
@@ -110,34 +134,38 @@ export function AgentBuilderSheet({ onCreate }: AgentBuilderSheetProps) {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="agent-endpoint">서빙 모델 / 엔드포인트</Label>
-            <Select value={endpointId} onValueChange={(v) => setEndpointId(v ?? "")}>
-              <SelectTrigger id="agent-endpoint" className="w-full">
-                <SelectValue placeholder="모델 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                {MOCK_LLM_ENDPOINTS.map((e) => {
-                  const exceeds = e.max_security_level > ctx.principal.level;
-                  return (
-                    <SelectItem key={e.id} value={e.id} disabled={exceeds}>
+            {endpoints.length === 0 ? (
+              <p className="text-xs text-muted-foreground">불러오는 중…</p>
+            ) : (
+              <Select value={endpointId} onValueChange={(v) => setEndpointId(v ?? "")}>
+                <SelectTrigger id="agent-endpoint" className="w-full">
+                  <SelectValue placeholder="모델 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  {endpoints.map((e) => (
+                    <SelectItem key={e.id} value={e.id}>
                       <span className="flex flex-1 items-center justify-between gap-2">
                         <span>
                           {e.model} ({e.source})
                         </span>
                         <span className="font-mono text-[11px] text-muted-foreground">
-                          {exceeds ? "클리어런스 초과" : `L${e.max_security_level}`}
+                          L{e.max_security_level}
                         </span>
                       </span>
                     </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
 
-          {assignedLevel && (
+          {selectedEndpoint && (
             <div className="flex items-center gap-2 rounded-md border border-border bg-muted/40 px-2.5 py-2">
               <span className="text-xs text-muted-foreground">자동 부여 등급</span>
-              <SecurityBadge level={assignedLevel} visibility={shared ? "shared" : "private"} />
+              <SecurityBadge
+                level={selectedEndpoint.max_security_level}
+                visibility={shared ? "shared" : "private"}
+              />
             </div>
           )}
 
@@ -147,14 +175,21 @@ export function AgentBuilderSheet({ onCreate }: AgentBuilderSheetProps) {
               {shared ? "공용 — 클리어런스 충족 멤버 전원 열람" : "PRIVATE — 본인 + admin만"}
             </Label>
           </div>
+
+          {error && (
+            <p className="text-xs text-destructive">{error}</p>
+          )}
         </div>
 
         <SheetFooter className="flex-row justify-end gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
             취소
           </Button>
-          <Button onClick={handleCreate} disabled={!name.trim() || !assignedLevel}>
-            편입
+          <Button
+            onClick={handleCreate}
+            disabled={!name.trim() || !selectedEndpoint || submitting}
+          >
+            {submitting ? "편입 중…" : "편입"}
           </Button>
         </SheetFooter>
       </SheetContent>

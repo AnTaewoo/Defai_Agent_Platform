@@ -5,8 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { SecurityBadge } from "@/components/security/security-badge";
-import { MOCK_USERS } from "@/lib/api/mock";
-import type { AuditEntry } from "@/lib/api/types";
+import type { AuditEntry, UserPublicOut } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { Pause, Play } from "lucide-react";
 
@@ -46,6 +45,7 @@ const LIVE_CANDIDATES: Omit<AuditEntry, "id" | "at">[] = [
 
 interface AuditStreamProps {
   initialEntries: AuditEntry[];
+  users?: UserPublicOut[];
   className?: string;
 }
 
@@ -53,7 +53,7 @@ interface AuditStreamProps {
  * OPS_CONSOLE.md §3.6 — 실시간 스트림 + 일시정지 토글 + 강조 규칙.
  * 빨강(crit) = 클리어런스 초과·권한 거부·이상 로그인. 앰버(warn) = cloud 전환·클리어런스 변경(L5 승격 등).
  */
-export function AuditStream({ initialEntries, className }: AuditStreamProps) {
+export function AuditStream({ initialEntries, users = [], className }: AuditStreamProps) {
   const [entries, setEntries] = useState<AuditEntry[]>(initialEntries);
   const [paused, setPaused] = useState(false);
   const idxRef = useRef(0);
@@ -88,7 +88,7 @@ export function AuditStream({ initialEntries, className }: AuditStreamProps) {
       <CardContent className="max-h-[32rem] overflow-y-auto p-0">
         <ul className="divide-y divide-border">
           {entries.map((entry) => {
-            const user = MOCK_USERS.find((u) => u.id === entry.user_id);
+            const user = users.find((u) => u.id === entry.user_id);
             return (
               <li
                 key={entry.id}

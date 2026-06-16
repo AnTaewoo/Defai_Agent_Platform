@@ -1,12 +1,12 @@
+"use client";
+
 import { Separator } from "@/components/ui/separator";
 import { ResourceModels } from "@/components/admin/resource-models";
 import { ResourceNodes } from "@/components/admin/resource-nodes";
 import { ServiceTiles } from "@/components/admin/service-tiles";
 
 /**
- * OPS_CONSOLE.md §3.7 — 인프라 · 리소스. 읽기전용 모니터링.
- * 서비스 상태 타일(OpenSearch/PostgreSQL/Airflow/MinIO/Sandbox Egress) +
- * 리소스 대시보드(노드 GPU/CPU/RAM · 모델↔노드↔local LLM 할당).
+ * OPS_CONSOLE.md §3.7 — 인프라 · 리소스. 서비스 상태 타일 + 노드 요약 + 모델 서빙 등급 관리.
  */
 export default function AdminInfraPage() {
   return (
@@ -16,8 +16,7 @@ export default function AdminInfraPage() {
           인프라 · 리소스
         </h1>
         <p className="text-sm text-muted-foreground">
-          온프레미스 스택 운영 상태를 감시합니다(읽기전용 — 제어는 인프라 레이어). 이상치(노드
-          오프라인 · DAG 실패 · EGRESS 시도 · 클러스터 red)는 감사 스트림으로도 전파됩니다.
+          온프레미스 스택 운영 상태를 감시합니다. 모델 서빙 등급은 여기서 변경할 수 있습니다.
         </p>
       </div>
 

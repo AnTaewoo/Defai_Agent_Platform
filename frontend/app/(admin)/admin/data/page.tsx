@@ -12,9 +12,8 @@ import {
 } from "@/components/ui/select";
 import { DataTable } from "@/components/admin/data-table";
 import { SECURITY_LEVEL_NAMES, type AdminDataRow } from "@/lib/api/admin-mock";
-import { listLibraryData } from "@/lib/api/client";
-import { MOCK_USERS } from "@/lib/api/mock";
-import type { AuditEntry, DataItemOut, SecurityLevel } from "@/lib/api/types";
+import { deleteAdminData, listLibraryData, listUsers, patchDataLevel } from "@/lib/api/client";
+import type { AuditEntry, DataItemOut, SecurityLevel, UserPublicOut } from "@/lib/api/types";
 import { useSession } from "@/lib/session-context";
 
 const VISIBILITY_OPTIONS = [
@@ -29,14 +28,14 @@ const ATTACH_OPTIONS = [
   { value: "unattached", label: "미연결 (0)" },
 ];
 
-function toAdminDataRow(item: DataItemOut): AdminDataRow {
-  const owner = MOCK_USERS.find((u) => u.id === item.owner_id);
+function toAdminDataRow(item: DataItemOut, users: UserPublicOut[]): AdminDataRow {
+  const owner = users.find((u) => u.id === item.owner_id);
   return {
     id: item.id,
     source: item.filename || item.id,
     ownerId: item.owner_id,
     ownerName: owner?.name ?? item.owner_id,
-    dept: item.dept ?? "-",
+    dept: "",
     securityLevel: item.security_level as SecurityLevel,
     visibility: item.visibility as "shared" | "private",
     indexStatus: item.index_status,
@@ -52,18 +51,22 @@ function toAdminDataRow(item: DataItemOut): AdminDataRow {
 export default function AdminDataPage() {
   const { ctx } = useSession();
   const [rows, setRows] = useState<AdminDataRow[]>([]);
+  const [users, setUsers] = useState<UserPublicOut[]>([]);
   const [userFilter, setUserFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
   const [visibilityFilter, setVisibilityFilter] = useState("all");
   const [attachFilter, setAttachFilter] = useState("all");
   const [recentChanges, setRecentChanges] = useState<AuditEntry[]>([]);
 
-  // 실제 백엔드에서 데이터 목록 로드 (L5 admin은 공용 전체 + 본인 PRIVATE 포함)
+  useEffect(() => {
+    listUsers().then(setUsers).catch(console.error);
+  }, []);
+
   useEffect(() => {
     listLibraryData(ctx)
-      .then((items) => setRows(items.map(toAdminDataRow)))
+      .then((items) => setRows(items.map((i) => toAdminDataRow(i, users))))
       .catch(console.error);
-  }, [ctx.principal.user_id]);
+  }, [ctx.principal.user_id, users]);
 
   const filtered = useMemo(() => {
     return rows.filter((r) => {
@@ -76,28 +79,55 @@ export default function AdminDataPage() {
     });
   }, [rows, userFilter, levelFilter, visibilityFilter, attachFilter]);
 
-  function handleLevelChange(dataId: string, nextLevel: SecurityLevel) {
+  async function handleLevelChange(dataId: string, nextLevel: SecurityLevel) {
     const target = rows.find((r) => r.id === dataId);
     if (!target || target.securityLevel === nextLevel) return;
     const prevLevel = target.securityLevel;
 
+    // Optimistic update with indexing animation
     setRows((prev) =>
       prev.map((r) => (r.id === dataId ? { ...r, securityLevel: nextLevel, indexStatus: "indexing" } : r)),
     );
 
+    try {
+      await patchDataLevel(ctx, dataId, nextLevel);
+
+      const entry: AuditEntry = {
+        id: `a-data-${Date.now()}`,
+        at: new Date().toISOString(),
+        user_id: ctx.principal.user_id,
+        action: "data_level_change",
+        detail: `${target.source}(${dataId}) 등급 L${prevLevel} → L${nextLevel} 변경`,
+        severity: "warn",
+      };
+      setRecentChanges((prev) => [entry, ...prev]);
+
+      window.setTimeout(() => {
+        setRows((prev) => prev.map((r) => (r.id === dataId ? { ...r, indexStatus: "indexed" } : r)));
+      }, 1200);
+    } catch (err) {
+      // Revert on failure
+      setRows((prev) =>
+        prev.map((r) => (r.id === dataId ? { ...r, securityLevel: prevLevel, indexStatus: target.indexStatus } : r)),
+      );
+      console.error("데이터 등급 변경 실패:", err);
+    }
+  }
+
+  async function handleDelete(dataId: string) {
+    const target = rows.find((r) => r.id === dataId);
+    if (!target) return;
+    await deleteAdminData(ctx, dataId);
+    setRows((prev) => prev.filter((r) => r.id !== dataId));
     const entry: AuditEntry = {
-      id: `a-data-${Date.now()}`,
+      id: `a-del-${Date.now()}`,
       at: new Date().toISOString(),
       user_id: ctx.principal.user_id,
-      action: "data_level_change",
-      detail: `${target.source}(${dataId}) 등급 L${prevLevel} → L${nextLevel} 변경 — 재색인 트리거`,
+      action: "data_delete",
+      detail: `${target.source}(${dataId}) 삭제`,
       severity: "warn",
     };
     setRecentChanges((prev) => [entry, ...prev]);
-
-    window.setTimeout(() => {
-      setRows((prev) => prev.map((r) => (r.id === dataId ? { ...r, indexStatus: "indexed" } : r)));
-    }, 1200);
   }
 
   return (
@@ -117,9 +147,9 @@ export default function AdminDataPage() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">전체 소유자</SelectItem>
-            {MOCK_USERS.map((u) => (
+            {users.map((u) => (
               <SelectItem key={u.id} value={u.id}>
-                {u.name}
+                {u.name || u.id}
               </SelectItem>
             ))}
           </SelectContent>
@@ -172,7 +202,7 @@ export default function AdminDataPage() {
           <CardDescription>본문 청크는 메타로만 노출됩니다.</CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <DataTable rows={filtered} onLevelChange={handleLevelChange} />
+          <DataTable rows={filtered} onLevelChange={handleLevelChange} onDelete={handleDelete} />
         </CardContent>
       </Card>
 

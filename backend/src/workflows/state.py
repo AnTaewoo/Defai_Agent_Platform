@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import TypedDict
 
-from ..types import SessionContext, ToolResult
+from ..types import Chunk, SessionContext, ToolResult
 
 
 class WorkflowState(TypedDict):
@@ -15,6 +15,7 @@ class WorkflowState(TypedDict):
     running_level: int
     source_ids: list[str]
     observations: list[str]
+    chunks_used: list[Chunk]
     done: bool
     answer: str
     next_tool: str | None

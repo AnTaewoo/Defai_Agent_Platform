@@ -3,7 +3,7 @@
  * "sso-<user_id>") + `X-Project-Id` 헤더로 SessionContext를 구성한다
  * (backend/src/api/main.py `_principal`/`_open_session` 참고).
  */
-import type { AgentOut, ArtifactOut, ChatRequest, ChunkOut, DataItemOut, LlmSourceStatus, MemberOut, ProjectRole, ProjectSummary, SecurityLevel, SessionContext, UserPublicOut } from "@/lib/api/types";
+import type { AdminAgentOut, AdminUserOut, AgentOut, ArtifactOut, AuditEntry, ChatRequest, ChunkOut, DataItemOut, LlmEndpointOut, LlmSourceStatus, MemberOut, ProjectRole, ProjectSummary, SecurityLevel, SessionContext, UserPublicOut } from "@/lib/api/types";
 
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -216,4 +216,122 @@ export async function addProjectMember(
 export async function getLlmSource(ctx: SessionContext): Promise<LlmSourceStatus> {
   const res = await fetch(`${API_BASE_URL}/llm/source`, { headers: authHeaders(ctx) });
   return unwrap<LlmSourceStatus>(res);
+}
+
+/** GET /admin/audit — 전체 감사 로그(최신 200건). L5 필수. */
+export async function getAdminAuditLog(ctx: SessionContext): Promise<AuditEntry[]> {
+  const res = await fetch(`${API_BASE_URL}/admin/audit`, { headers: authHeaders(ctx) });
+  return unwrap<AuditEntry[]>(res);
+}
+
+/** GET /admin/users — 전체 유저 + 프로젝트 수. L5 필수. */
+export async function getAdminUsers(ctx: SessionContext): Promise<AdminUserOut[]> {
+  const res = await fetch(`${API_BASE_URL}/admin/users`, { headers: authHeaders(ctx) });
+  return unwrap<AdminUserOut[]>(res);
+}
+
+/** PATCH /admin/users/{id}/level — 유저 클리어런스 변경. L5 필수. */
+export async function patchUserLevel(
+  ctx: SessionContext,
+  userId: string,
+  level: SecurityLevel,
+): Promise<AdminUserOut> {
+  const res = await fetch(`${API_BASE_URL}/admin/users/${userId}/level`, {
+    method: "PATCH",
+    headers: authHeaders(ctx),
+    body: JSON.stringify({ level }),
+  });
+  return unwrap<AdminUserOut>(res);
+}
+
+/** PATCH /admin/data/{id}/level — 데이터 보안등급 변경. L5 필수. */
+export async function patchDataLevel(
+  ctx: SessionContext,
+  dataId: string,
+  level: SecurityLevel,
+): Promise<DataItemOut> {
+  const res = await fetch(`${API_BASE_URL}/admin/data/${dataId}/level`, {
+    method: "PATCH",
+    headers: authHeaders(ctx),
+    body: JSON.stringify({ level }),
+  });
+  return unwrap<DataItemOut>(res);
+}
+
+/** DELETE /admin/data/{id} — 데이터 삭제(파일+청크+DB). L5 필수. */
+export async function deleteAdminData(ctx: SessionContext, dataId: string): Promise<void> {
+  const res = await fetch(`${API_BASE_URL}/admin/data/${dataId}`, {
+    method: "DELETE",
+    headers: authHeaders(ctx),
+  });
+  if (!res.ok) await unwrap<never>(res);
+}
+
+/** GET /admin/agents — 전체 에이전트(등급 필터 없음). L5 필수. */
+export async function getAdminAgents(ctx: SessionContext): Promise<AdminAgentOut[]> {
+  const res = await fetch(`${API_BASE_URL}/admin/agents`, { headers: authHeaders(ctx) });
+  return unwrap<AdminAgentOut[]>(res);
+}
+
+/** PATCH /admin/agents/{id}/level — 에이전트 보안등급 변경. L5 필수. */
+export async function patchAgentLevel(
+  ctx: SessionContext,
+  agentId: string,
+  level: SecurityLevel,
+): Promise<AdminAgentOut> {
+  const res = await fetch(`${API_BASE_URL}/admin/agents/${agentId}/level`, {
+    method: "PATCH",
+    headers: authHeaders(ctx),
+    body: JSON.stringify({ level }),
+  });
+  return unwrap<AdminAgentOut>(res);
+}
+
+/** GET /llm-endpoints — 내 클리어런스 이하 LLM 엔드포인트(에이전트 빌더용). */
+export async function getLlmEndpoints(ctx: SessionContext): Promise<LlmEndpointOut[]> {
+  const res = await fetch(`${API_BASE_URL}/llm-endpoints`, { headers: authHeaders(ctx) });
+  return unwrap<LlmEndpointOut[]>(res);
+}
+
+/** POST /projects/{id}/agents — 에이전트 생성(project_admin). */
+export async function createProjectAgent(
+  ctx: SessionContext,
+  projectId: string,
+  name: string,
+  description: string,
+  endpointId: string,
+  visibility: "shared" | "private",
+): Promise<AgentOut> {
+  const res = await fetch(`${API_BASE_URL}/projects/${projectId}/agents`, {
+    method: "POST",
+    headers: authHeaders(ctx),
+    body: JSON.stringify({ name, description, endpoint_id: endpointId, visibility }),
+  });
+  return unwrap<AgentOut>(res);
+}
+
+/** GET /admin/llm-endpoints — 전체 LLM 엔드포인트. L5 필수. */
+export async function getAdminLlmEndpoints(ctx: SessionContext): Promise<LlmEndpointOut[]> {
+  const res = await fetch(`${API_BASE_URL}/admin/llm-endpoints`, { headers: authHeaders(ctx) });
+  return unwrap<LlmEndpointOut[]>(res);
+}
+
+/** GET /data/{dataId}/chunks — 데이터 청크 목록(summary 포함). */
+export async function getDataChunks(ctx: SessionContext, dataId: string): Promise<ChunkOut[]> {
+  const res = await fetch(`${API_BASE_URL}/data/${dataId}/chunks`, { headers: authHeaders(ctx) });
+  return unwrap<ChunkOut[]>(res);
+}
+
+/** PATCH /admin/llm-endpoints/{id}/level — 서빙 등급 변경. L5 필수. */
+export async function patchLlmEndpointLevel(
+  ctx: SessionContext,
+  endpointId: string,
+  level: SecurityLevel,
+): Promise<LlmEndpointOut> {
+  const res = await fetch(`${API_BASE_URL}/admin/llm-endpoints/${endpointId}/level`, {
+    method: "PATCH",
+    headers: authHeaders(ctx),
+    body: JSON.stringify({ level }),
+  });
+  return unwrap<LlmEndpointOut>(res);
 }

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from opensearchpy import OpenSearch
 
-from ..types import Chunk
+from ..types import Chunk, SecurityMeta
 from .client import INDEX_NAME, PIPELINE_NAME, _INDEX_BODY, get_client
 from .ml_commons import _ensure_embedding_model, doc_id
 
@@ -40,6 +40,12 @@ def ensure_index(client: "OpenSearch | None" = None) -> None:
 
     if not client.indices.exists(index=INDEX_NAME):
         client.indices.create(index=INDEX_NAME, body=_INDEX_BODY)
+    else:
+        # 기존 인덱스에 summary 필드가 없으면 mapping 추가(idempotent).
+        client.indices.put_mapping(
+            index=INDEX_NAME,
+            body={"properties": {"summary": {"type": "text", "index": False}}},
+        )
 
 
 def index_chunks(
@@ -67,7 +73,11 @@ def index_chunks(
             {
                 "_index": INDEX_NAME,
                 "_id": doc_id(src, i),
-                "_source": {"content": chunk.text, **asdict(chunk.meta)},
+                "_source": {
+                    "content": chunk.text,
+                    "summary": chunk.summary,
+                    **asdict(chunk.meta),
+                },
             }
         )
     success, errors = bulk(
@@ -90,3 +100,31 @@ def delete_by_source(source: str, client: "OpenSearch | None" = None) -> None:
         body={"query": {"term": {"source": source}}},
         refresh=True,
     )
+
+
+def _chunk_from_hit(hit: dict) -> Chunk:
+    src = hit["_source"]
+    meta = SecurityMeta(
+        security_level=src["security_level"],
+        dept=src.get("dept", ""),
+        source=src["source"],
+        doc_type=src.get("doc_type", ""),
+        owner_id=src.get("owner_id", ""),
+        visibility=src.get("visibility", "shared"),
+    )
+    return Chunk(text=src["content"], meta=meta, summary=src.get("summary", ""))
+
+
+def list_chunks(source: str, client: "OpenSearch | None" = None, *, max_chunks: int = 500) -> list[Chunk]:
+    """한 데이터(source=data_id)의 모든 청크를 순서대로 반환. 데이터 상세 화면용."""
+    client = client or get_client()
+    if not client.indices.exists(index=INDEX_NAME):
+        return []
+    body = {
+        "size": max_chunks,
+        "_source": True,
+        "query": {"term": {"source": source}},
+        "sort": [{"_id": "asc"}],
+    }
+    hits = client.search(index=INDEX_NAME, body=body)["hits"]["hits"]
+    return [_chunk_from_hit(hit) for hit in hits]

@@ -11,7 +11,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import { DUMMY_PROJECT_ID, MOCK_PROJECT } from "@/lib/api/mock";
 import { useSession } from "@/lib/session-context";
 
 export const OPEN_COMMAND_PALETTE_EVENT = "dap:open-command-palette";
@@ -48,7 +47,7 @@ export function CommandPalette() {
     router.push(path);
   };
 
-  const projectId = DUMMY_PROJECT_ID;
+  const projectId = ctx.membership.project_id;
 
   return (
     <CommandDialog open={open} onOpenChange={setOpen} title="명령 팔레트" description="이동할 위치를 검색하세요">
@@ -59,7 +58,7 @@ export function CommandPalette() {
           <CommandItem onSelect={() => go("/dashboard")}>대시보드</CommandItem>
           <CommandItem onSelect={() => go("/data")}>데이터함</CommandItem>
         </CommandGroup>
-        <CommandGroup heading={`프로젝트 — ${MOCK_PROJECT.name}`}>
+        <CommandGroup heading="프로젝트">
           <CommandItem onSelect={() => go(`/p/${projectId}/overview`)}>개요</CommandItem>
           <CommandItem onSelect={() => go(`/p/${projectId}/data`)}>데이터</CommandItem>
           <CommandItem onSelect={() => go(`/p/${projectId}/agents`)}>에이전트</CommandItem>

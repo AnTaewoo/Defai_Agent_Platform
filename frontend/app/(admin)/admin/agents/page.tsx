@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,19 +15,40 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AgentTable } from "@/components/admin/agent-table";
-import { adminAgentRows, SECURITY_LEVEL_NAMES, type AdminAgentRow } from "@/lib/api/admin-mock";
-import type { AuditEntry, SecurityLevel } from "@/lib/api/types";
+import { SECURITY_LEVEL_NAMES, type AdminAgentRow } from "@/lib/api/admin-mock";
+import { getAdminAgents, patchAgentLevel } from "@/lib/api/client";
+import type { AdminAgentOut, AuditEntry, SecurityLevel } from "@/lib/api/types";
 import { useSession } from "@/lib/session-context";
+
+function toAdminAgentRow(a: AdminAgentOut): AdminAgentRow {
+  return {
+    id: a.id,
+    name: a.name,
+    description: "",
+    ownerId: "",
+    ownerName: "-",
+    projectName: a.project_name,
+    securityLevel: a.security_level,
+    visibility: "shared",
+    status: "idle",
+  };
+}
 
 /**
  * OPS_CONSOLE.md §3.4 — 전 user 에이전트(공용+private) 관찰 + 등급 관리(사유 기록).
  */
 export default function AdminAgentsPage() {
   const { ctx } = useSession();
-  const [rows, setRows] = useState<AdminAgentRow[]>(() => adminAgentRows());
+  const [rows, setRows] = useState<AdminAgentRow[]>([]);
   const [recentChanges, setRecentChanges] = useState<AuditEntry[]>([]);
   const [pending, setPending] = useState<{ agentId: string; nextLevel: SecurityLevel } | null>(null);
   const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    getAdminAgents(ctx)
+      .then((agents) => setRows(agents.map(toAdminAgentRow)))
+      .catch(console.error);
+  }, [ctx.principal.user_id]);
 
   function requestLevelChange(agentId: string, nextLevel: SecurityLevel) {
     const target = rows.find((r) => r.id === agentId);
@@ -36,29 +57,40 @@ export default function AdminAgentsPage() {
     setReason("");
   }
 
-  function confirmLevelChange() {
+  async function confirmLevelChange() {
     if (!pending) return;
     const target = rows.find((r) => r.id === pending.agentId);
     if (!target) return;
     const prevLevel = target.securityLevel;
 
+    // Optimistic update
     setRows((prev) =>
       prev.map((r) => (r.id === pending.agentId ? { ...r, securityLevel: pending.nextLevel } : r)),
     );
-
-    const entry: AuditEntry = {
-      id: `a-agent-${Date.now()}`,
-      at: new Date().toISOString(),
-      user_id: ctx.principal.user_id,
-      action: "agent_level_change",
-      detail: `${target.name}(${pending.agentId}) 등급 L${prevLevel} → L${pending.nextLevel} 변경${
-        reason.trim() ? ` — 사유: ${reason.trim()}` : ""
-      }`,
-      severity: "warn",
-    };
-    setRecentChanges((prev) => [entry, ...prev]);
     setPending(null);
     setReason("");
+
+    try {
+      await patchAgentLevel(ctx, target.id, pending.nextLevel);
+
+      const entry: AuditEntry = {
+        id: `a-agent-${Date.now()}`,
+        at: new Date().toISOString(),
+        user_id: ctx.principal.user_id,
+        action: "agent_level_change",
+        detail: `${target.name}(${target.id}) 등급 L${prevLevel} → L${pending.nextLevel} 변경${
+          reason.trim() ? ` — 사유: ${reason.trim()}` : ""
+        }`,
+        severity: "warn",
+      };
+      setRecentChanges((prev) => [entry, ...prev]);
+    } catch (err) {
+      // Revert on failure
+      setRows((prev) =>
+        prev.map((r) => (r.id === target.id ? { ...r, securityLevel: prevLevel } : r)),
+      );
+      console.error("에이전트 등급 변경 실패:", err);
+    }
   }
 
   const pendingTarget = pending ? rows.find((r) => r.id === pending.agentId) : null;

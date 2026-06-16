@@ -8,20 +8,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { SecurityBadge } from "@/components/security/security-badge";
-import type { DataItemOut } from "@/lib/api/types";
+import type { ChunkOut, DataItemOut } from "@/lib/api/types";
 import { BookOpen } from "lucide-react";
 
+interface CitationSource {
+  data: DataItemOut;
+  chunk?: ChunkOut;
+}
+
 interface CitationPanelProps {
-  sources: DataItemOut[];
+  sources: CitationSource[];
 }
 
-function previewChunk(item: DataItemOut): string {
-  const src = item.filename || item.id;
-  const dept = item.dept ?? "출처 미지정";
-  return src + "에서 검색된 관련 구간 — " + dept + " 자료 기준 응답에 인용되었습니다.";
-}
-
-/** CONSOLE.md §5.6 — 출처 사이드패널: 데이터명 + 등급 배지 + 청크 미리보기. */
+/** CONSOLE.md §5.6 — 출처 사이드패널: 데이터명 + 등급 배지 + 인용 청크 + 저장된 한 줄 요약. */
 export function CitationPanel({ sources }: CitationPanelProps) {
   return (
     <Card className="h-full">
@@ -38,7 +37,7 @@ export function CitationPanel({ sources }: CitationPanelProps) {
             아직 응답이 없습니다. 메시지를 보내면 출처가 표시됩니다.
           </p>
         ) : (
-          sources.map((s) => (
+          sources.map(({ data: s, chunk }) => (
             <div key={s.id} className="space-y-1.5 rounded-md border border-border bg-card px-2.5 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="truncate text-sm font-medium text-foreground">
@@ -46,7 +45,20 @@ export function CitationPanel({ sources }: CitationPanelProps) {
                 </span>
                 <SecurityBadge level={s.security_level} visibility={s.visibility} />
               </div>
-              <p className="text-xs leading-relaxed text-muted-foreground">{previewChunk(s)}</p>
+              {chunk ? (
+                <>
+                  {chunk.summary && (
+                    <p className="text-[11px] font-medium leading-snug text-foreground">
+                      {chunk.summary}
+                    </p>
+                  )}
+                  <p className="line-clamp-4 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                    {chunk.text}
+                  </p>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">청크 정보 없음</p>
+              )}
             </div>
           ))
         )}

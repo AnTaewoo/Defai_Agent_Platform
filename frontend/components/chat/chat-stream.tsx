@@ -10,7 +10,7 @@ import { CitationPanel } from "@/components/chat/citation-panel";
 import { CloudWarningDialog } from "@/components/chat/cloud-warning-dialog";
 import { MessageList, type ChatMessage } from "@/components/chat/message-list";
 import { SourcePicker } from "@/components/chat/source-picker";
-import type { AgentOut, DataItemOut, LlmSourceStatus, SessionContext } from "@/lib/api/types";
+import type { AgentOut, ChunkOut, DataItemOut, LlmSourceStatus, SessionContext } from "@/lib/api/types";
 import { useSession } from "@/lib/session-context";
 import { Send } from "lucide-react";
 
@@ -40,7 +40,7 @@ export function ChatStream() {
   );
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
-  const [sources, setSources] = useState<DataItemOut[]>([]);
+  const [sources, setSources] = useState<Array<{ data: DataItemOut; chunk?: ChunkOut }>>([]);
   const [pendingQuery, setPendingQuery] = useState<string | null>(null);
   const [warningOpen, setWarningOpen] = useState(false);
   const streamTimer = useRef<number | null>(null);
@@ -107,7 +107,15 @@ export function ChatStream() {
 
     try {
       const artifact = await sendChatMessage(chatCtx, query, selectedDataIds, selectedAgentId);
-      setSources(projectData.filter((d) => artifact.source_ids.includes(d.id)));
+      const chunkBySource = new Map<string, ChunkOut>();
+      for (const c of artifact.chunks_used ?? []) {
+        if (!chunkBySource.has(c.source)) chunkBySource.set(c.source, c);
+      }
+      setSources(
+        projectData
+          .filter((d) => artifact.source_ids.includes(d.id))
+          .map((d) => ({ data: d, chunk: chunkBySource.get(d.id) })),
+      );
       revealWordByWord(assistantId, artifact.content || "(응답 내용이 없습니다.)");
     } catch (err) {
       const message =

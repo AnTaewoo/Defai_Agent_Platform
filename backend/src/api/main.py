@@ -24,6 +24,7 @@ TODO: 채팅 SSE 스트리밍(현재 run_workflow는 동기/완결 Artifact만 �
 """
 from __future__ import annotations
 
+import json
 import uuid
 from collections.abc import Sequence
 from pathlib import Path
@@ -39,13 +40,19 @@ from ..auth import principal_from_session
 from ..projects import _db, attached_source_ids, can, membership_of
 from ..types import DataItem, Principal, SessionContext
 from .schemas import (
+    AdminAgentOut,
+    AdminUserOut,
+    AgentCreateIn,
     AgentOut,
     AgentSelectIn,
     ArtifactOut,
     AttachDataIn,
+    AuditEntryOut,
     ChatRequest,
     ChunkOut,
     DataItemOut,
+    LevelPatchIn,
+    LlmEndpointOut,
     LlmSourceOut,
     MemberAddIn,
     MemberOut,
@@ -65,6 +72,11 @@ def _startup() -> None:
     """DB 스키마 보장 + 더미 시드(개발용). 운영은 Alembic 마이그레이션으로 교체."""
     _db.ensure_schema()
     _db.seed_dummy_project()
+    try:
+        indexing.ensure_index()
+    except Exception as exc:  # noqa: BLE001
+        import logging
+        logging.getLogger(__name__).warning("OpenSearch ensure_index 실패(업로드 시 재시도): %s", exc)
 
 
 # 개발용 CORS: 프론트(Next dev, 기본 5720)에서 X-Session-Token/X-Project-Id 헤더로 직접 호출.
@@ -344,6 +356,80 @@ def list_project_agents(
     ]
 
 
+@app.post("/projects/{project_id}/agents", response_model=AgentOut, status_code=201)
+def create_project_agent(
+    project_id: str, body: AgentCreateIn, principal: Principal = Depends(_principal)
+) -> AgentOut:
+    """에이전트 생성(project_admin만). 보안등급은 선택한 엔드포인트 max_security_level에서 자동 부여.
+
+    절대원칙 4: principal.level < endpoint.max_security_level이면 생성 불가(fail-closed).
+    """
+    ctx = _open_session(principal, project_id)
+    if ctx.membership.role != "project_admin":
+        raise HTTPException(status_code=403, detail="에이전트 생성은 project_admin만 가능합니다")
+
+    with _db.get_engine().connect() as conn:
+        ep = conn.execute(
+            select(_db.llm_endpoints).where(_db.llm_endpoints.c.id == body.endpoint_id)
+        ).first()
+
+    if ep is None:
+        raise HTTPException(status_code=404, detail="엔드포인트를 찾을 수 없습니다")
+
+    if ep.max_security_level > principal.level:
+        raise HTTPException(
+            status_code=403,
+            detail=f"엔드포인트 서빙 등급 L{ep.max_security_level}이 클리어런스 L{principal.level}을 초과합니다",
+        )
+
+    if body.visibility not in ("shared", "private"):
+        raise HTTPException(status_code=400, detail="visibility는 'shared'|'private'만 허용")
+
+    agent_id = f"agent-{uuid.uuid4().hex[:12]}"
+    with _db.get_engine().begin() as conn:
+        conn.execute(
+            _db.agents.insert().values(
+                id=agent_id,
+                project_id=project_id,
+                name=body.name,
+                security_level=ep.max_security_level,
+                model_endpoint_id=body.endpoint_id,
+                config_json={"description": body.description, "visibility": body.visibility},
+            )
+        )
+
+    return AgentOut(
+        id=agent_id,
+        name=body.name,
+        description=body.description,
+        security_level=ep.max_security_level,
+        visibility=body.visibility,
+        owner_id=principal.user_id,
+        status="idle",
+    )
+
+
+@app.get("/llm-endpoints", response_model=list[LlmEndpointOut])
+def list_llm_endpoints(principal: Principal = Depends(_principal)) -> list[LlmEndpointOut]:
+    """본인 클리어런스 이하 LLM 엔드포인트 목록(에이전트 빌더용). 인증 필요."""
+    with _db.get_engine().connect() as conn:
+        rows = conn.execute(
+            select(_db.llm_endpoints)
+            .where(_db.llm_endpoints.c.max_security_level <= principal.level)
+            .order_by(_db.llm_endpoints.c.max_security_level)
+        ).all()
+    return [
+        LlmEndpointOut(
+            id=r.id,
+            base_url=r.base_url,
+            model=r.model,
+            max_security_level=r.max_security_level,
+            source=r.source,
+        )
+        for r in rows
+    ]
+
+
 # --- 데이터 라이브러리 / 프로젝트 데이터 (게이트 ①②③ 조립) ----------------------------
 
 
@@ -476,36 +562,48 @@ def upload_data(
     dest = _save_upload(data_id, file)
 
     try:
-        doc = parsing.parse(str(dest))
-    except NotImplementedError as exc:
-        dest.unlink(missing_ok=True)
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            doc = parsing.parse(str(dest))
+        except NotImplementedError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"파일 파싱 실패: {exc}") from exc
 
-    chunks = chunking.chunk_and_tag(
-        doc,
-        owner_id=principal.user_id,
-        security_level=security_level,
-        dept=dept,
-        visibility=visibility,
-        data_id=data_id,
-    )
-
-    indexing.ensure_index()
-    indexing.index_chunks(chunks)
-
-    with _db.get_engine().begin() as conn:
-        conn.execute(
-            _db.data.insert().values(
-                id=data_id,
-                owner_id=principal.user_id,
-                source=str(dest),
-                filename=original_filename,
-                doc_type=doc.doc_type,
-                security_level=security_level,
-                visibility=visibility,
-                dept=dept,
-            )
+        chunks = chunking.chunk_and_tag(
+            doc,
+            owner_id=principal.user_id,
+            security_level=security_level,
+            dept=dept,
+            visibility=visibility,
+            data_id=data_id,
         )
+
+        try:
+            indexing.ensure_index()
+            indexing.index_chunks(chunks)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"색인 실패 (OpenSearch): {exc}") from exc
+
+        with _db.get_engine().begin() as conn:
+            conn.execute(
+                _db.data.insert().values(
+                    id=data_id,
+                    owner_id=principal.user_id,
+                    source=str(dest),
+                    filename=original_filename,
+                    doc_type=doc.doc_type,
+                    security_level=security_level,
+                    visibility=visibility,
+                    dept=dept,
+                )
+            )
+
+    except HTTPException:
+        dest.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=f"업로드 처리 실패: {exc}") from exc
 
     return DataItemOut.of(
         DataItem(
@@ -537,32 +635,14 @@ def list_data_chunks(
     if not _list_data(ctx, ids=[data_id]):
         raise HTTPException(status_code=404, detail="데이터를 찾을 수 없거나 접근 권한이 없습니다")
 
-    from ..indexing import INDEX_NAME, get_client
+    from ..indexing import list_chunks
 
     try:
-        client = get_client()
-        if not client.indices.exists(index=INDEX_NAME):
-            return []
-        resp = client.search(
-            index=INDEX_NAME,
-            body={
-                "size": 20,
-                "query": {"term": {"source": data_id}},
-                "_source": ["content", "security_level", "source", "doc_type"],
-            },
-        )
+        chunks = list_chunks(data_id)
     except Exception:
         return []
 
-    return [
-        ChunkOut(
-            text=hit["_source"]["content"],
-            security_level=hit["_source"]["security_level"],
-            source=hit["_source"]["source"],
-            doc_type=hit["_source"]["doc_type"],
-        )
-        for hit in resp["hits"]["hits"]
-    ]
+    return [ChunkOut.of(c) for c in chunks]
 
 
 @app.post("/projects/{project_id}/data", response_model=list[DataItemOut])
@@ -655,3 +735,362 @@ def llm_source(principal: Principal = Depends(_principal)) -> LlmSourceOut:
 
     provider = f"vLLM ({endpoint.model}, {mode})" if endpoint is not None else mode
     return LlmSourceOut(mode=mode, provider=provider)
+
+
+# --- 관리자(admin) 전용 엔드포인트 (L5 필수) ------------------------------------------
+
+
+def _require_admin(principal: Principal) -> None:
+    if principal.level < 5:
+        raise HTTPException(status_code=403, detail="L5(admin) 권한이 필요합니다")
+
+
+def _severity_for_action(action: str) -> str:
+    if action in ("access_denied", "cloud_l3_proceed"):
+        return "crit"
+    if action in ("level_change", "llm_source_change", "data_level_change", "agent_level_change"):
+        return "warn"
+    return "info"
+
+
+def _detail_to_str(detail: object) -> str:
+    if not detail:
+        return ""
+    if isinstance(detail, str):
+        return detail
+    if not isinstance(detail, dict):
+        return str(detail)
+    # Structured entries written by admin endpoints
+    if "target_user_id" in detail:
+        return f"사용자 {detail['target_user_id']} 클리어런스 → L{detail.get('new_level', '?')} 변경"
+    if "data_id" in detail:
+        return f"데이터 {detail['data_id']} 등급 → L{detail.get('new_level', '?')} 변경"
+    if "agent_id" in detail:
+        return f"에이전트 {detail['agent_id']} 등급 → L{detail.get('new_level', '?')} 변경"
+    # Chat entries: return the query text
+    for key in ("query", "reason", "message", "description"):
+        if key in detail:
+            return str(detail[key])
+    return json.dumps(detail, ensure_ascii=False)
+
+
+@app.get("/admin/audit", response_model=list[AuditEntryOut])
+def admin_audit_log(principal: Principal = Depends(_principal)) -> list[AuditEntryOut]:
+    """전체 감사 로그(최신 200건). L5 필수."""
+    _require_admin(principal)
+    with _db.get_engine().connect() as conn:
+        rows = conn.execute(
+            select(_db.audit_log).order_by(_db.audit_log.c.ts.desc()).limit(200)
+        ).all()
+    return [
+        AuditEntryOut(
+            id=str(row.id),
+            at=row.ts.isoformat() if row.ts else "",
+            user_id=row.user_id or "",
+            action=row.action,
+            detail=_detail_to_str(row.detail),
+            severity=_severity_for_action(row.action),
+        )
+        for row in rows
+    ]
+
+
+@app.get("/admin/users", response_model=list[AdminUserOut])
+def admin_list_users(principal: Principal = Depends(_principal)) -> list[AdminUserOut]:
+    """전체 유저 + 프로젝트 참여 수. L5 필수."""
+    _require_admin(principal)
+    with _db.get_engine().connect() as conn:
+        pm_sub = (
+            select(
+                _db.project_members.c.user_id,
+                func.count().label("cnt"),
+            )
+            .group_by(_db.project_members.c.user_id)
+            .subquery()
+        )
+        rows = conn.execute(
+            select(
+                _db.users.c.id,
+                _db.users.c.name,
+                _db.users.c.level,
+                _db.users.c.dept,
+                func.coalesce(pm_sub.c.cnt, 0).label("project_count"),
+            )
+            .outerjoin(pm_sub, pm_sub.c.user_id == _db.users.c.id)
+            .order_by(_db.users.c.level, _db.users.c.id)
+        ).all()
+    return [
+        AdminUserOut(
+            id=r.id,
+            name=getattr(r, "name", "") or r.id,
+            level=r.level,
+            dept=r.dept or "",
+            project_count=r.project_count,
+            is_initial_admin=r.level >= 5,
+        )
+        for r in rows
+    ]
+
+
+@app.patch("/admin/users/{user_id}/level", response_model=AdminUserOut)
+def admin_patch_user_level(
+    user_id: str,
+    body: LevelPatchIn,
+    principal: Principal = Depends(_principal),
+) -> AdminUserOut:
+    """유저 클리어런스 변경 + 감사 로그 기록. L5 필수."""
+    _require_admin(principal)
+    if not (1 <= body.level <= 5):
+        raise HTTPException(status_code=400, detail="level은 1~5여야 합니다")
+    with _db.get_engine().begin() as conn:
+        res = conn.execute(
+            _db.users.update().where(_db.users.c.id == user_id).values(level=body.level)
+        )
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+        conn.execute(
+            _db.audit_log.insert().values(
+                user_id=principal.user_id,
+                action="level_change",
+                detail={"target_user_id": user_id, "new_level": body.level},
+            )
+        )
+    with _db.get_engine().connect() as conn:
+        pm_sub = (
+            select(
+                _db.project_members.c.user_id,
+                func.count().label("cnt"),
+            )
+            .group_by(_db.project_members.c.user_id)
+            .subquery()
+        )
+        row = conn.execute(
+            select(
+                _db.users.c.id,
+                _db.users.c.name,
+                _db.users.c.level,
+                _db.users.c.dept,
+                func.coalesce(pm_sub.c.cnt, 0).label("project_count"),
+            )
+            .outerjoin(pm_sub, pm_sub.c.user_id == _db.users.c.id)
+            .where(_db.users.c.id == user_id)
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    return AdminUserOut(
+        id=row.id,
+        name=getattr(row, "name", "") or row.id,
+        level=row.level,
+        dept=row.dept or "",
+        project_count=row.project_count,
+        is_initial_admin=row.level >= 5,
+    )
+
+
+@app.patch("/admin/data/{data_id}/level", response_model=DataItemOut)
+def admin_patch_data_level(
+    data_id: str,
+    body: LevelPatchIn,
+    principal: Principal = Depends(_principal),
+) -> DataItemOut:
+    """데이터 보안등급 변경 + 감사 로그 기록. L5 필수."""
+    _require_admin(principal)
+    if not (1 <= body.level <= 5):
+        raise HTTPException(status_code=400, detail="level은 1~5여야 합니다")
+    with _db.get_engine().begin() as conn:
+        res = conn.execute(
+            _db.data.update().where(_db.data.c.id == data_id).values(security_level=body.level)
+        )
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다")
+        conn.execute(
+            _db.audit_log.insert().values(
+                user_id=principal.user_id,
+                action="data_level_change",
+                detail={"data_id": data_id, "new_level": body.level},
+            )
+        )
+    with _db.get_engine().connect() as conn:
+        row = conn.execute(select(_db.data).where(_db.data.c.id == data_id)).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다")
+    return DataItemOut.of(
+        DataItem(
+            id=row.id,
+            owner_id=row.owner_id,
+            doc_type=row.doc_type,
+            security_level=row.security_level,
+            visibility=row.visibility,
+            dept=row.dept or "",
+            source=row.source or "",
+            filename=getattr(row, "filename", "") or "",
+        ),
+        index_status="indexed",
+    )
+
+
+@app.delete("/admin/data/{data_id}", status_code=204)
+def admin_delete_data(
+    data_id: str,
+    principal: Principal = Depends(_principal),
+) -> None:
+    """데이터 삭제(파일 + OpenSearch 청크 + DB 행 + project_data 연결). L5 필수."""
+    _require_admin(principal)
+    with _db.get_engine().connect() as conn:
+        row = conn.execute(select(_db.data).where(_db.data.c.id == data_id)).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="데이터를 찾을 수 없습니다")
+
+    source_path = getattr(row, "source", "") or ""
+    try:
+        indexing.delete_by_source(data_id)
+    except Exception:
+        pass
+
+    with _db.get_engine().begin() as conn:
+        conn.execute(_db.project_data.delete().where(_db.project_data.c.data_id == data_id))
+        conn.execute(_db.data.delete().where(_db.data.c.id == data_id))
+        conn.execute(
+            _db.audit_log.insert().values(
+                user_id=principal.user_id,
+                action="data_delete",
+                detail={"data_id": data_id, "filename": getattr(row, "filename", "") or data_id},
+            )
+        )
+
+    if source_path:
+        Path(source_path).unlink(missing_ok=True)
+
+
+@app.get("/admin/agents", response_model=list[AdminAgentOut])
+def admin_list_agents(principal: Principal = Depends(_principal)) -> list[AdminAgentOut]:
+    """전체 에이전트(등급 필터 없음). L5 필수."""
+    _require_admin(principal)
+    with _db.get_engine().connect() as conn:
+        rows = conn.execute(
+            select(
+                _db.agents.c.id,
+                _db.agents.c.name,
+                _db.agents.c.security_level,
+                _db.agents.c.project_id,
+                _db.projects.c.name.label("project_name"),
+            )
+            .outerjoin(_db.projects, _db.projects.c.id == _db.agents.c.project_id)
+            .order_by(_db.agents.c.security_level)
+        ).all()
+    return [
+        AdminAgentOut(
+            id=r.id,
+            name=r.name,
+            security_level=r.security_level,
+            project_id=r.project_id,
+            project_name=r.project_name or "",
+        )
+        for r in rows
+    ]
+
+
+@app.patch("/admin/agents/{agent_id}/level", response_model=AdminAgentOut)
+def admin_patch_agent_level(
+    agent_id: str,
+    body: LevelPatchIn,
+    principal: Principal = Depends(_principal),
+) -> AdminAgentOut:
+    """에이전트 보안등급 변경 + 감사 로그 기록. L5 필수."""
+    _require_admin(principal)
+    if not (1 <= body.level <= 5):
+        raise HTTPException(status_code=400, detail="level은 1~5여야 합니다")
+    with _db.get_engine().begin() as conn:
+        res = conn.execute(
+            _db.agents.update().where(_db.agents.c.id == agent_id).values(security_level=body.level)
+        )
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="에이전트를 찾을 수 없습니다")
+        conn.execute(
+            _db.audit_log.insert().values(
+                user_id=principal.user_id,
+                action="agent_level_change",
+                detail={"agent_id": agent_id, "new_level": body.level},
+            )
+        )
+    with _db.get_engine().connect() as conn:
+        row = conn.execute(
+            select(
+                _db.agents.c.id,
+                _db.agents.c.name,
+                _db.agents.c.security_level,
+                _db.agents.c.project_id,
+                _db.projects.c.name.label("project_name"),
+            )
+            .outerjoin(_db.projects, _db.projects.c.id == _db.agents.c.project_id)
+            .where(_db.agents.c.id == agent_id)
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="에이전트를 찾을 수 없습니다")
+    return AdminAgentOut(
+        id=row.id,
+        name=row.name,
+        security_level=row.security_level,
+        project_id=row.project_id,
+        project_name=row.project_name or "",
+    )
+
+
+@app.get("/admin/llm-endpoints", response_model=list[LlmEndpointOut])
+def admin_list_llm_endpoints(principal: Principal = Depends(_principal)) -> list[LlmEndpointOut]:
+    """전체 LLM 엔드포인트(서빙 등급 포함). L5 필수."""
+    _require_admin(principal)
+    with _db.get_engine().connect() as conn:
+        rows = conn.execute(
+            select(_db.llm_endpoints).order_by(_db.llm_endpoints.c.max_security_level)
+        ).all()
+    return [
+        LlmEndpointOut(
+            id=r.id,
+            base_url=r.base_url,
+            model=r.model,
+            max_security_level=r.max_security_level,
+            source=r.source,
+        )
+        for r in rows
+    ]
+
+
+@app.patch("/admin/llm-endpoints/{endpoint_id}/level", response_model=LlmEndpointOut)
+def admin_patch_llm_endpoint_level(
+    endpoint_id: str,
+    body: LevelPatchIn,
+    principal: Principal = Depends(_principal),
+) -> LlmEndpointOut:
+    """LLM 엔드포인트 서빙 보안등급(max_security_level) 변경 + 감사 로그. L5 필수."""
+    _require_admin(principal)
+    if not (1 <= body.level <= 5):
+        raise HTTPException(status_code=400, detail="level은 1~5여야 합니다")
+    with _db.get_engine().begin() as conn:
+        res = conn.execute(
+            _db.llm_endpoints.update()
+            .where(_db.llm_endpoints.c.id == endpoint_id)
+            .values(max_security_level=body.level)
+        )
+        if res.rowcount == 0:
+            raise HTTPException(status_code=404, detail="엔드포인트를 찾을 수 없습니다")
+        conn.execute(
+            _db.audit_log.insert().values(
+                user_id=principal.user_id,
+                action="llm_endpoint_level_change",
+                detail={"endpoint_id": endpoint_id, "new_level": body.level},
+            )
+        )
+    with _db.get_engine().connect() as conn:
+        row = conn.execute(
+            select(_db.llm_endpoints).where(_db.llm_endpoints.c.id == endpoint_id)
+        ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="엔드포인트를 찾을 수 없습니다")
+    return LlmEndpointOut(
+        id=row.id,
+        base_url=row.base_url,
+        model=row.model,
+        max_security_level=row.max_security_level,
+        source=row.source,
+    )

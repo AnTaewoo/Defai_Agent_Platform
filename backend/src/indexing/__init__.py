@@ -13,7 +13,7 @@ from .client import (
     get_client,
 )
 from .ml_commons import get_embedding_model_id
-from .pipeline import ensure_index, index_chunks, delete_by_source
+from .pipeline import ensure_index, index_chunks, delete_by_source, list_chunks
 
 __all__ = [
     "INDEX_NAME",
@@ -27,4 +27,5 @@ __all__ = [
     "ensure_index",
     "index_chunks",
     "delete_by_source",
+    "list_chunks",
 ]

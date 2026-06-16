@@ -80,6 +80,7 @@ class Chunk:
     # embedding은 OpenSearch ML Commons 인게스트 파이프라인이 서버측에서 생성한다.
     # 클라이언트는 채우지 않는다(None). 클라이언트측 임베딩이 필요할 때만 사용하는 예비 필드.
     embedding: list[float] | None = None
+    summary: str = ""  # 청킹 시 첫 문장 추출(citation panel·데이터 상세 표시용)
 
 
 @dataclass
@@ -99,6 +100,7 @@ class Artifact:
     source_ids: tuple[str, ...]        # 출처/근거 청크·도구결과 ID (provenance)
     path: str | None = None            # 파일 산출물 경로(docx/pdf/pptx/xlsx 등)
     content: str | None = None         # 텍스트/코드 본문
+    chunks_used: tuple[Chunk, ...] = ()  # 인용된 원본 청크(citation panel용)
 
 
 @dataclass(frozen=True)   # 도구결과 등급도 불변
@@ -108,6 +110,7 @@ class ToolResult:
     security_level: int
     output: str
     source_ids: tuple[str, ...] = ()
+    chunks: tuple[Chunk, ...] = ()
 
 
 def propagate_level(*levels: int, floor: int = 1) -> int:

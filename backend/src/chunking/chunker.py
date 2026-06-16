@@ -1,9 +1,12 @@
 """청킹 + 보안 메타데이터 태깅 로직."""
 from __future__ import annotations
 
+import re
+
 from ..types import Chunk, ParsedDocument, SecurityMeta
 
 _DEFAULT_MAX_CHARS = 800
+_SUMMARY_MAX_CHARS = 150
 
 
 def chunk_and_tag(
@@ -36,12 +39,22 @@ def chunk_and_tag(
 
     for block in doc.text_blocks:
         for piece in _split_text(block, max_chars):
-            chunks.append(Chunk(text=piece, meta=meta))
+            chunks.append(Chunk(text=piece, meta=meta, summary=_summarize(piece)))
 
     for table in doc.tables:
-        chunks.append(Chunk(text=_serialize_table(table), meta=meta))
+        text = _serialize_table(table)
+        chunks.append(Chunk(text=text, meta=meta, summary=_summarize(text)))
 
     return chunks
+
+
+def _summarize(text: str, max_chars: int = _SUMMARY_MAX_CHARS) -> str:
+    """청크 텍스트에서 첫 문장(또는 첫 줄)을 추출해 한 줄 요약으로 반환."""
+    cleaned = text.replace("\n", " ").strip()
+    # 마침표/느낌표/물음표 뒤 공백을 문장 경계로 인식
+    parts = re.split(r"(?<=[.!?])\s+", cleaned, maxsplit=1)
+    first = parts[0].strip()
+    return first[:max_chars] + ("…" if len(first) > max_chars else "")
 
 
 def _split_text(text: str, max_chars: int) -> list[str]:

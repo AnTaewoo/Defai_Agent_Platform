@@ -46,6 +46,7 @@ _INDEX_BODY = {
             "dept": {"type": "keyword"},
             "source": {"type": "keyword"},
             "doc_type": {"type": "keyword"},
+            "summary": {"type": "text", "index": False},
         }
     },
 }

@@ -41,6 +41,7 @@ export function UploadDropzone({ onUpload }: UploadDropzoneProps) {
   const { ctx, user } = useSession();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [formatError, setFormatError] = useState<string | null>(null);
   const [securityLevel, setSecurityLevel] = useState<SecurityLevel>(ctx.principal.level);
   const [shared, setShared] = useState(true);
 
@@ -55,9 +56,14 @@ export function UploadDropzone({ onUpload }: UploadDropzoneProps) {
 
   function handleFiles(files: FileList | null) {
     if (!files || files.length === 0) return;
+    setFormatError(null);
+    let rejected = false;
     Array.from(files).forEach((file) => {
       const ext = fileExt(file.name);
-      if (!ACCEPTED_EXT.includes(ext)) return;
+      if (!ACCEPTED_EXT.includes(ext)) {
+        rejected = true;
+        return;
+      }
       onUpload({
         file,
         fileName: file.name,
@@ -66,10 +72,16 @@ export function UploadDropzone({ onUpload }: UploadDropzoneProps) {
         visibility: shared ? "shared" : "private",
       });
     });
+    if (rejected) setFormatError(`지원 형식 외 파일이 포함되어 있습니다. PDF · XLSX만 허용됩니다.`);
   }
 
   return (
     <div className="space-y-3">
+      {formatError && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+          {formatError}
+        </p>
+      )}
       <div
         onDragOver={(e) => {
           e.preventDefault();

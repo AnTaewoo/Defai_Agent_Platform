@@ -16,4 +16,10 @@ def _run_search(ctx: SessionContext, *, query: str, **_kwargs) -> ToolResult:
     security_level = classify_artifact(ctx, *(c.meta.security_level for c in chunks))
     output = _CHUNK_SEP.join(c.text for c in chunks)[:_MAX_OUTPUT_CHARS]
     source_ids = tuple(c.meta.source for c in chunks)
-    return ToolResult(tool="search", security_level=security_level, output=output, source_ids=source_ids)
+    return ToolResult(
+        tool="search",
+        security_level=security_level,
+        output=output,
+        source_ids=source_ids,
+        chunks=tuple(chunks),
+    )

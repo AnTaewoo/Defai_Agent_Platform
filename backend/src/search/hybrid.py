@@ -25,7 +25,7 @@ def _chunk_from_hit(hit: dict) -> Chunk:
         owner_id=src["owner_id"],
         visibility=src["visibility"],
     )
-    return Chunk(text=src["content"], meta=meta, embedding=None)
+    return Chunk(text=src["content"], meta=meta, embedding=None, summary=src.get("summary", ""))
 
 
 def _rrf_fuse(
