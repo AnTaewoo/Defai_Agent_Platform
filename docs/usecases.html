@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>D.A.P — 유즈케이스 맵</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.3/mermaid.min.js"></script>
+<style>
+  :root{
+    --ink:#1c1c1c; --sage:#daddd8; --cream:#ecebe4; --mist:#eef0f2; --ghost:#fafaff;
+    --line:#c7ccc6; --muted:#5f635e;
+    --l1:#4f9a78; --l2:#4d8aa6; --l3:#b08a3e; --l4:#c2703d; --l5:#b04a4a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ghost); color:var(--ink);
+    font-family:"Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+    line-height:1.55;
+    background-image:
+      linear-gradient(var(--mist) 1px, transparent 1px),
+      linear-gradient(90deg, var(--mist) 1px, transparent 1px);
+    background-size:28px 28px;
+    background-position:-1px -1px;
+  }
+  .wrap{max-width:1000px; margin:0 auto; padding:44px 22px 80px;}
+  .mono{font-family:"JetBrains Mono", ui-monospace, monospace;}
+  header.head{border-bottom:1px solid var(--ink); padding-bottom:22px; margin-bottom:34px;}
+  .kicker{font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.28em; text-transform:uppercase; color:var(--muted);}
+  h1{font-size:clamp(30px,6vw,46px); font-weight:700; letter-spacing:-.01em; margin:.32em 0 .12em; line-height:1.05;}
+  h1 .dot{color:var(--muted);}
+  .sub{color:var(--muted); font-size:15px; max-width:62ch;}
+  .status{margin-top:18px; display:flex; flex-wrap:wrap; gap:8px;}
+  .pill{font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.04em; border:1px solid var(--line); background:var(--mist);
+        padding:5px 10px; border-radius:999px;}
+  .pill b{color:var(--ink);} .pill.ok::before{content:"✓ "; color:var(--l1);}
+
+  section{margin-top:40px; animation:rise .6s cubic-bezier(.2,.7,.2,1) both;}
+  section:nth-of-type(1){animation-delay:.05s} section:nth-of-type(2){animation-delay:.12s}
+  section:nth-of-type(3){animation-delay:.19s} section:nth-of-type(4){animation-delay:.26s}
+  section:nth-of-type(5){animation-delay:.33s} section:nth-of-type(6){animation-delay:.40s}
+  @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+
+  h2{font-size:13px; font-family:"JetBrains Mono",monospace; letter-spacing:.16em; text-transform:uppercase;
+     color:var(--ink); margin:0 0 4px; display:flex; align-items:baseline; gap:10px;}
+  h2 .n{color:var(--muted); font-weight:500;}
+  .lead{color:var(--muted); font-size:14px; margin:0 0 16px; max-width:70ch;}
+
+  .card{background:var(--ghost); border:1px solid var(--line); border-radius:12px; padding:14px;
+        box-shadow:0 1px 0 var(--sage);}
+  .card + .card{margin-top:16px;}
+  .card .cap{font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted); letter-spacing:.06em; margin:2px 4px 10px;}
+  pre.mermaid{margin:0; text-align:center; background:transparent;}
+
+  .invariant{display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px;}
+  .gate{border:1px solid var(--line); border-left:3px solid var(--ink); border-radius:8px; padding:12px 14px; background:var(--mist);}
+  .gate .g{font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted); letter-spacing:.1em;}
+  .gate .t{font-weight:600; margin-top:3px;}
+  .gate .d{font-size:13px; color:var(--muted); margin-top:4px;}
+
+  .actors{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px;}
+  .actor{border:1px solid var(--line); border-radius:10px; padding:13px 15px; background:var(--ghost);}
+  .actor .ic{font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted); letter-spacing:.08em;}
+  .actor .nm{font-weight:600; margin-top:2px;}
+  .actor .ro{font-size:13px; color:var(--muted); margin-top:3px;}
+
+  .levels{display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;}
+  .lv{font-family:"JetBrains Mono",monospace; font-size:11px; border:1px solid var(--line); border-radius:6px; padding:4px 9px; display:flex; align-items:center; gap:7px; background:var(--ghost);}
+  .sw{width:10px; height:10px; border-radius:2px; display:inline-block;}
+  footer{margin-top:48px; padding-top:18px; border-top:1px solid var(--line); color:var(--muted); font-size:12px; font-family:"JetBrains Mono",monospace;}
+  a{color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="head">
+    <div class="kicker">Deployable Enterprise-first AI agent Platform</div>
+    <h1>D.A.P <span class="dot">·</span> 유즈케이스 맵</h1>
+    <p class="sub">프로젝트 단위로 격리된 멀티에이전트 RAG + 에이전틱 문서·코드 생성 플랫폼. 모든 요청은 3중 게이트를 통과한다.</p>
+    <div class="status">
+      <span class="pill ok"><b>설계 일관성 검토 완료</b></span>
+      <span class="pill ok">모순 12곳 정리</span>
+      <span class="pill ok">전 모듈 컴파일</span>
+      <span class="pill">페이즈 <b>P1–P12</b></span>
+      <span class="pill">온프레미스 · 망분리</span>
+    </div>
+  </header>
+
+  <!-- 1. 핵심 불변식 -->
+  <section>
+    <h2><span class="n">01</span> 핵심 접근 불변식</h2>
+    <p class="lead">검색·에이전트·도구·생성 등 보안 민감 호출은 모두 <span class="mono">SessionContext</span>를 받고, 아래 세 게이트를 AND로 통과한다.</p>
+    <div class="invariant">
+      <div class="gate"><div class="g">GATE ①</div><div class="t">프로젝트 격리</div><div class="d">project_id == 활성 프로젝트. 멤버 아니면 거부.</div></div>
+      <div class="gate"><div class="g">GATE ②</div><div class="t">등급 클리어런스</div><div class="d">security_level ≤ level. 부서 무관(프로젝트 멤버면 접근).</div></div>
+      <div class="gate"><div class="g">GATE ③</div><div class="t">에이전트 가용</div><div class="d">프로젝트 보유 ∩ {등급 ≤ level}. 수동 부여 없음.</div></div>
+    </div>
+  </section>
+
+  <!-- 2. 액터 -->
+  <section>
+    <h2><span class="n">02</span> 액터</h2>
+    <div class="actors">
+      <div class="actor"><div class="ic">USER</div><div class="nm">사내 직원 (멤버)</div><div class="ro">질의·세션·에이전트 선택, 문서 업로드(member+), 워크플로우 실행</div></div>
+      <div class="actor"><div class="ic">PROJECT_ADMIN</div><div class="nm">프로젝트 생성자</div><div class="ro">프로젝트 생성, 멤버 관리, 에이전트 편입(자기 등급 이하), 문서함 관리</div></div>
+      <div class="actor"><div class="ic">ML / DEV</div><div class="nm">모델 개발·서빙팀</div><div class="ro">오픈웨이트 모델 vLLM 서빙 + 보안등급 지정 → 에이전트 등급 자동 부여</div></div>
+      <div class="actor"><div class="ic">SYS_ADMIN</div><div class="nm">시스템 관리자</div><div class="ro">SSO/LDAP, 인프라(OpenSearch·Postgres·MinIO·샌드박스) 운영</div></div>
+    </div>
+  </section>
+
+  <!-- 3. 유즈케이스 맵 -->
+  <section>
+    <h2><span class="n">03</span> 유즈케이스 맵</h2>
+    <p class="lead">액터 ↔ 유즈케이스. 점선은 «extend/secured by» — 보안 게이트가 가로지르는 지점.</p>
+    <div class="card">
+      <div class="cap">actors → use cases (grouped by domain)</div>
+<pre class="mermaid">
+flowchart LR
+  classDef uc fill:#eef0f2,stroke:#1c1c1c,stroke-width:1px,color:#1c1c1c,rx:14,ry:14;
+  classDef act fill:#1c1c1c,stroke:#1c1c1c,color:#fafaff;
+  classDef grp fill:#fafaff,stroke:#c7ccc6,color:#5f635e;
+
+  U["사내 직원"]:::act
+  PA["프로젝트 생성자"]:::act
+  ML["모델·서빙팀"]:::act
+  SA["시스템 관리자"]:::act
+
+  subgraph DAP["D.A.P 플랫폼"]
+    direction TB
+    subgraph G1["인증 · 세션"]
+      a1(["SSO 로그인"]):::uc
+      a2(["세션 열기"]):::uc
+      a3(["에이전트 선택"]):::uc
+    end
+    subgraph G2["프로젝트 · RBAC"]
+      b1(["프로젝트 생성"]):::uc
+      b2(["멤버 관리"]):::uc
+      b3(["에이전트 편입"]):::uc
+      b4(["문서함 관리"]):::uc
+    end
+    subgraph G3["지식 수집"]
+      c1(["문서 업로드"]):::uc
+      c2(["파싱·청킹·인덱싱"]):::uc
+    end
+    subgraph G4["질의 · 에이전틱"]
+      d1(["RAG 질의 (3중 게이트)"]):::uc
+      d2(["워크플로우 실행"]):::uc
+      d3(["문서 생성"]):::uc
+      d4(["코드 생성 (샌드박스)"]):::uc
+    end
+    subgraph G5["모델"]
+      e1(["모델 서빙 + 등급 지정"]):::uc
+    end
+  end
+  class DAP,G1,G2,G3,G4,G5 grp;
+
+  U --> a1 & a2 & a3 & c1 & d1 & d2 & d3 & d4
+  PA --> b1 & b2 & b3 & b4
+  ML --> e1
+  SA --> a1
+  c1 -.-> c2
+  e1 -.->|등급 자동| b3
+  b3 -.-> a3
+</pre>
+    </div>
+  </section>
+
+  <!-- 4. 시퀀스: 모델→에이전트→세션 -->
+  <section>
+    <h2><span class="n">04</span> 라이프사이클 · 모델 → 에이전트 → 세션</h2>
+    <p class="lead">에이전트 등급은 서빙 모델 등급에서 자동으로 흐른다. 어느 단계에서도 자기 등급 위로 못 올라간다.</p>
+    <div class="card">
+      <div class="cap">model serving → agent onboarding → in-session pick</div>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor ML as 모델·서빙팀
+  participant V as vLLM 엔드포인트
+  actor PA as project_admin
+  participant P as projects
+  actor U as 사내 직원
+  participant S as sessions
+  ML->>V: 오픈웨이트 모델 서빙 + 보안등급 지정
+  Note over V: agent.security_level = 모델 등급 (자동)
+  PA->>P: add_project_agent(ctx, agent)
+  Note right of P: 게이트 ⓐ 등급 ≤ 생성자.level<br/>게이트 ⓑ role=project_admin
+  U->>S: open_session(principal, project)
+  S->>P: membership 확인 (멤버 아니면 거부)
+  U->>S: select_agent(ctx, agent_id)
+  Note right of S: available_agents = 프로젝트 보유 ∩ {등급 ≤ level}<br/>목록 밖이면 PermissionError
+  S-->>U: active_agent_id 설정된 세션
+</pre>
+    </div>
+  </section>
+
+  <!-- 5. 시퀀스: RAG 질의 3중 게이트 -->
+  <section>
+    <h2><span class="n">05</span> RAG 질의 · 3중 게이트</h2>
+    <p class="lead">권한은 후처리가 아니라 OpenSearch 쿼리 filter에 <i>질의 전</i> 강제 주입된다.</p>
+    <div class="card">
+      <div class="cap">query → pre-filtered hybrid search → grounded answer</div>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as 사내 직원
+  participant API as FastAPI
+  participant SE as search(ctx)
+  participant OS as OpenSearch
+  participant AG as agent (LangGraph)
+  participant V as vLLM
+  U->>API: 질의 (세션 ctx)
+  API->>SE: search(query, ctx=SessionContext)
+  SE->>OS: filter[ project_id, level≤ ] + BM25 + kNN
+  OS-->>SE: 허용 청크만 (RRF 결합)
+  SE-->>AG: 근거 청크 + 출처
+  AG->>V: 등급 라우팅된 엔드포인트로 생성
+  V-->>AG: 스트리밍 토큰
+  AG-->>U: 답변 + 출처(Citation) + 감사 로그
+</pre>
+    </div>
+  </section>
+
+  <!-- 6. 시퀀스: 에이전틱 생성 -->
+  <section>
+    <h2><span class="n">06</span> 에이전틱 생성 · 등급 전파 & 샌드박스</h2>
+    <p class="lead">생성물 등급 = 접한 모든 소스의 max. 코드 실행은 망 차단 샌드박스에서만.</p>
+    <div class="card">
+      <div class="cap">workflow plan→act→observe · docgen · codegen(sandbox)</div>
+<pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as 사내 직원
+  participant W as workflows(ctx)
+  participant T as tools
+  participant SE as search
+  participant DG as docgen
+  participant CG as codegen
+  participant SB as sandbox (egress 0)
+  participant ST as 프로젝트 스토리지(MinIO)
+  U->>W: 과제 (ctx)
+  loop plan → act → observe (max_steps)
+    W->>T: available_tools(ctx) 중 선택
+    T->>SE: 근거 검색 (3중 게이트)
+    SE-->>W: 청크 (+running_level 갱신)
+  end
+  alt 문서 생성
+    W->>DG: generate_document(ctx)
+    DG-->>ST: Artifact(level=max, 출처·분류 표기)
+  else 코드 생성/실행
+    W->>CG: generate_code(ctx)
+    CG->>SB: run_in_sandbox (외부 스토어 직접접근 0)
+    SB-->>CG: 결과 (세션 등급 상속)
+  end
+  W-->>U: Artifact (등급 전파됨)
+</pre>
+    </div>
+  </section>
+
+  <!-- 보안등급 범례 -->
+  <section>
+    <h2><span class="n">07</span> 보안등급 범례</h2>
+    <p class="lead">팔레트가 무채색이라 등급은 기능색(최소 도입)으로만 표기 — 배지·출처·필터에 한정.</p>
+    <div class="levels">
+      <span class="lv"><span class="sw" style="background:var(--l1)"></span>L1 공개</span>
+      <span class="lv"><span class="sw" style="background:var(--l2)"></span>L2 대내</span>
+      <span class="lv"><span class="sw" style="background:var(--l3)"></span>L3 민감</span>
+      <span class="lv"><span class="sw" style="background:var(--l4)"></span>L4 비밀</span>
+      <span class="lv"><span class="sw" style="background:var(--l5)"></span>L5 기밀</span>
+    </div>
+  </section>
+
+  <footer>
+    D.A.P harness · Mission Console / Daylight · palette #1c1c1c #daddd8 #ecebe4 #eef0f2 #fafaff<br/>
+    상세: docs/projects-rbac.md · docs/agentic.md · docs/architecture.md · ROADMAP.md
+  </footer>
+
+</div>
+<script>
+  mermaid.initialize({
+    startOnLoad:true,
+    theme:'base',
+    themeVariables:{
+      background:'#fafaff',
+      primaryColor:'#eef0f2', primaryTextColor:'#1c1c1c', primaryBorderColor:'#1c1c1c',
+      lineColor:'#1c1c1c', secondaryColor:'#ecebe4', tertiaryColor:'#daddd8',
+      fontFamily:'JetBrains Mono, ui-monospace, monospace', fontSize:'13px',
+      actorBkg:'#1c1c1c', actorTextColor:'#fafaff', actorBorder:'#1c1c1c',
+      noteBkgColor:'#ecebe4', noteTextColor:'#1c1c1c', noteBorderColor:'#c7ccc6',
+      signalColor:'#1c1c1c', signalTextColor:'#1c1c1c',
+      clusterBkg:'#fafaff', clusterBorder:'#c7ccc6'
+    },
+    flowchart:{curve:'basis', htmlLabels:true}
+  });
+</script>
+</body>
+</html>

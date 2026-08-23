@@ -1,0 +1,73 @@
+# 개발용 인프라: OpenSearch(단일 엔진) + Postgres + Airflow
+# 운영 시 보안설정/볼륨/네트워크 분리는 별도 강화 필요
+services:
+  opensearch:
+    # 한국어 형태소(nori)는 기본 배포에 없어 커스텀 이미지로 설치한다(indexing.py 'ko' analyzer 전제).
+    build:
+      context: ./opensearch          # opensearch/Dockerfile: analysis-nori 플러그인 설치
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true   # 개발용. 운영은 활성화
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=Dap_dev_pw1!   # 2.12+ 보안 데모 설치기 필수값(개발용 더미). 운영은 활성화 시 별도 관리
+    ports: ["9200:9200"]
+    # k-NN 플러그인 + ML Commons는 기본 배포에 포함됨. analysis-nori는 위 커스텀 이미지에서 설치.
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ragmeta
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: change_me
+    ports: ["5432:5432"]
+
+  airflow:
+    image: apache/airflow:2.9.1
+    depends_on: [postgres]
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    ports: ["8080:8080"]
+    command: ["bash", "-c", "airflow db migrate && airflow standalone"]
+    # 주기 재인덱싱 DAG는 backend 배치 모듈과 연동, 실시간 업로드는 자체 트리거
+
+  # 사내 LLM 서빙 (오픈웨이트 모델). GPU 필요 — 개발 머신에 GPU 없으면 주석 유지.
+  # 등급 물리분리 시 이 블록을 복제해 vllm-l5 등으로 등급별 인스턴스를 띄운다.
+  # 모델 카탈로그(어드민 "모델 관리" 페이지)의 다른 모델(예: Qwen2.5-7B-Instruct)은 HF 캐시에
+  # 함께 받아두되, 동시에 띄우진 않는다 — 노드당 1모델 할당이므로 --model만 바꿔 교체한다.
+  # 12GB급 GPU 1장 기준 Qwen2.5-3B-Instruct(~6GB)가 기본값.
+  vllm:
+    # latest(v0.22.1)는 이 호스트의 NVIDIA 드라이버(570, CUDA 12.8)와 forward-compat 충돌
+    # (Error 804: forward compatibility was attempted on non supported HW, GeForce 미지원).
+    # v0.9.2로 고정.
+    image: vllm/vllm-openai:v0.9.2
+    command: ["--model", "Qwen/Qwen2.5-3B-Instruct", "--gpu-memory-utilization", "0.85"]
+    ports: ["8000:8000"]   # OpenAI 호환 /v1 엔드포인트
+    ipc: host              # vLLM 권장(공유메모리 부족 시 워커 크래시)
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface   # 모델 캐시 재사용(재다운로드 방지)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    # 운영: 외부 인터넷 egress 차단(망분리), 사내망에서만 접근
+
+  # 코드 실행 샌드박스 — 네트워크 차단, 비특권, 일회성. 코드 실행은 여기서만.
+  sandbox:
+    image: python:3.11-slim
+    network_mode: "none"          # egress 0 (망 격리)
+    read_only: true
+    tmpfs: ["/scratch"]
+    user: "65534:65534"           # nobody
+    # 워크플로우가 일회성 컨테이너로 spawn해 코드 실행 후 폐기하는 구조 권장
+
+  # 산출물 오브젝트 스토리지 (온프레미스, S3 호환)
+  minio:
+    image: minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: dap
+      MINIO_ROOT_PASSWORD: change_me
+    ports: ["9000:9000", "9001:9001"]
